@@ -144,11 +144,10 @@ function AssistantMessage() {
 }
 export function ChatThread({
   running,
+  canStop,
   stopping,
   loading,
   error,
-  requestStatus,
-  requestError,
   submitting,
   onRetry,
   onLoadMore,
@@ -157,11 +156,10 @@ export function ChatThread({
   onDraftChange,
 }: {
   running: boolean;
+  canStop: boolean;
   stopping: boolean;
   loading: boolean;
   error: string;
-  requestStatus?: string;
-  requestError?: string;
   submitting: boolean;
   onRetry?: () => void;
   onLoadMore?: () => void;
@@ -269,20 +267,13 @@ export function ChatThread({
               Reconnecting… Your saved messages are safe.
             </p>
           )}
-          {(error ||
-            requestStatus === 'failed' ||
-            requestStatus === 'stopped') && (
+          {(error || onRetry) && (
             <div
-              role={requestStatus === 'stopped' && !error ? 'status' : 'alert'}
+              role="alert"
               className="mb-3 flex flex-wrap items-center gap-3 rounded-xl border border-line bg-white px-4 py-3 text-sm"
             >
               <span>
-                {error ||
-                  (requestStatus === 'stopped'
-                    ? 'Response stopped.'
-                    : requestError === 'GATEWAY_UNAVAILABLE'
-                      ? 'Relish’s AI service isn’t available yet. Please try again later.'
-                      : 'Relish couldn’t finish this reply. Please try again.')}
+                {error || 'This message has no completed reply. You can retry.'}
               </span>
               {onRetry && (
                 <button
@@ -323,7 +314,7 @@ export function ChatThread({
               </span>
               {running ? (
                 <ComposerPrimitive.Cancel
-                  disabled={stopping || submitting || !connected}
+                  disabled={!canStop || stopping || submitting || !connected}
                   aria-label="Stop response"
                   className="flex size-9 shrink-0 items-center justify-center rounded-xl bg-ink text-white disabled:opacity-40"
                 >

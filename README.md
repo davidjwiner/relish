@@ -1,6 +1,6 @@
 # Relish
 
-Phase 1 of the music-taste app: Google sign-in with Convex Auth, protected navigation, and placeholder pages for Chat, Taste Profile, and Radar. Chat, preferences, and event recommendations are intentionally deferred to later steps in [design.md](./design.md).
+Relish is a music-taste app with Google sign-in and an Agent + assistant-ui chat proof of concept. Taste Profile and Radar remain placeholders for later steps in [design.md](./design.md).
 
 ## Requirements
 
@@ -64,7 +64,17 @@ If the Google consent screen is in testing mode, add each account used for verif
 
 Verify the variable names on the selected deployment with `pnpm exec convex env list --names-only`.
 
-Keep secrets in Convex, never in Vite variables, source control, or chat. `.env.example` documents the local public configuration and backend variable names. Model, Exa, Agent, Workflow, and LLM gateway configuration belong to later phases.
+Keep secrets in Convex, never in Vite variables, source control, or chat. `.env.example` documents the local public configuration and backend variable names. Model calls use the Convex AI Gateway. Exa and Workflow integrations belong to later phases.
+
+## Chat proof of concept
+
+The connection is small: `chat.send` saves a prompt with Convex Agent, `chat.generate` streams its reply, and `useUIMessages` feeds Agent messages into assistant-ui's `useExternalStoreRuntime`. Start with [ChatPage.tsx](./src/pages/ChatPage.tsx), [messageAdapter.ts](./src/chat/messageAdapter.ts), and [convex/chat.ts](./convex/chat.ts).
+
+Agent owns all conversation storage. There is no application request table, scheduled generation, polling loop, or watchdog. The UI handles pending/errors and retries with a saved prompt ID. Server-side deduplication and cross-tab execution locks are outside this proof of concept. See [Step 2](./step-2-chat-interface.md) for the flow and tradeoffs.
+
+The default is `openai/gpt-5.6-sol` with medium reasoning via the Convex AI Gateway. Run `pnpm dev:backend` to sync Agent and generate bindings. Gateway access must be enabled on the Convex team; no model API key goes in frontend configuration.
+
+Verify by sending a prompt, watching the reply stream, asking a follow-up, and reloading the saved conversation. Stop becomes available once streaming starts. Retry reuses the original prompt. Research and saving preferences are future steps.
 
 ## Commands
 

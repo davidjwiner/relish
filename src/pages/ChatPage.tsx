@@ -1,6 +1,11 @@
 import { useEffect, useRef, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
-import { useMutation, useQuery, useConvexConnectionState } from 'convex/react';
+import {
+  useAction,
+  useMutation,
+  useQuery,
+  useConvexConnectionState,
+} from 'convex/react';
 import {
   useUIMessages,
   optimisticallySendMessage,
@@ -8,9 +13,8 @@ import {
 import {
   AssistantRuntimeProvider,
   useExternalStoreRuntime,
-  type AppendMessage,
-  type ThreadMessageLike,
 } from '@assistant-ui/react';
+import { ConvexError } from 'convex/values';
 import { api } from '../../convex/_generated/api';
 import { ChatThread } from '../chat/Thread';
 import { useChatDrafts } from '../chat/ChatDrafts';
@@ -19,12 +23,13 @@ import { SlowOperation } from '../components/Recovery';
 
 export function ChatPage() {
   const { threadId } = useParams();
-  return <Conversation key={threadId ?? 'new'} threadId={threadId} />;
+  return <Conversation key={threadId ?? 'new'} initialThreadId={threadId} />;
 }
-function Conversation({ threadId }: { threadId?: string }) {
+function Conversation({ initialThreadId }: { initialThreadId?: string }) {
   const navigate = useNavigate();
   const drafts = useChatDrafts();
-  const draftKey = threadId ?? 'new';
+  const [threadId, setThreadId] = useState(initialThreadId);
+  const draftKey = initialThreadId ?? 'new';
   const thread = useQuery(api.chat.getThread, threadId ? { threadId } : 'skip');
   const { results, status, loadMore } = useUIMessages(
     api.chat.listMessages,
@@ -40,98 +45,113 @@ function Conversation({ threadId }: { threadId?: string }) {
         });
     },
   );
+  const generate = useAction(api.chat.generate);
   const stop = useMutation(api.chat.stop);
-  const retry = useMutation(api.chat.retry);
   const { isWebSocketConnected: connected } = useConvexConnectionState();
   const [pending, setPending] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [stopping, setStopping] = useState(false);
   const [error, setError] = useState('');
   const [draftLength, setDraftLength] = useState(
     () => (drafts.get(draftKey) ?? '').length,
   );
-  const [newMessage, setNewMessage] = useState<ThreadMessageLike | null>(null);
-  const submitting = useRef(false);
+  const busy = useRef(false);
   const mounted = useRef(true);
-  const sendIdentity = useRef<{ text: string; id: string } | null>(null);
-  const retryIdentity = useRef<string | null>(null);
   useEffect(() => {
     mounted.current = true;
     return () => {
       mounted.current = false;
     };
   }, []);
-  const request = thread?.request;
-  const running =
-    pending ||
-    ['queued', 'running', 'stopping'].includes(request?.status ?? '');
+  const streaming = results.some((m) => m.status === 'streaming');
+  const running = pending || streaming;
   const loading =
     !!threadId &&
     (thread === undefined ||
       (thread !== null && status === 'LoadingFirstPage'));
+  const last = results.at(-1);
+  const lastUser = results.filter((m) => m.role === 'user').at(-1);
+  // Retry uses the Agent message ID; there is no separate request record.
+  const retryPrompt =
+    last && (last.role === 'user' || last.status === 'failed' || error)
+      ? lastUser?.id
+      : undefined;
+  async function generateReply(
+    promptMessageId: string,
+    targetThreadId = threadId,
+  ) {
+    if (!targetThreadId) return;
+    setPending(true);
+    setError('');
+    try {
+      await generate({ threadId: targetThreadId, promptMessageId });
+      if (mounted.current && !initialThreadId)
+        navigate(`/chat/${targetThreadId}`, { replace: true });
+    } catch (cause) {
+      if (mounted.current)
+        setError(
+          cause instanceof ConvexError && cause.data === 'GATEWAY_UNAVAILABLE'
+            ? 'Relish’s AI service isn’t available yet. Please try again later.'
+            : 'Your message is saved, but the reply didn’t finish. You can retry.',
+        );
+    } finally {
+      if (mounted.current) {
+        setPending(false);
+        setStopping(false);
+      }
+    }
+  }
+
+  // The core integration: live Agent messages in, assistant-ui send/cancel out.
   const runtime = useExternalStoreRuntime({
-    messages:
-      newMessage && !threadId ? [newMessage] : results.map(toChatMessage),
-    convertMessage: (message: ThreadMessageLike) => message,
+    messages: results,
+    convertMessage: toChatMessage,
     isRunning: running,
     isLoading: loading,
-    isDisabled: pending || (!!threadId && thread === null),
+    isDisabled: saving || (!!threadId && thread === null),
     isSendDisabled: !connected || loading || draftLength > 8000 || running,
-    onNew: async (message: AppendMessage) => {
+    onNew: async (message) => {
       const prompt = message.content
         .filter((p) => p.type === 'text')
         .map((p) => p.text)
         .join('\n')
         .trim();
-      if (submitting.current) return;
-      if (!prompt || prompt.length > 8000 || !connected || running) {
-        runtime.thread.composer.setText(prompt);
-        return;
-      }
-      submitting.current = true;
+      if (busy.current || !prompt || prompt.length > 8000) return;
+      busy.current = true;
+      setSaving(true);
       setPending(true);
       setError('');
-      if (sendIdentity.current?.text !== prompt)
-        sendIdentity.current = { text: prompt, id: crypto.randomUUID() };
-      if (!threadId)
-        setNewMessage({
-          id: sendIdentity.current.id,
-          role: 'user',
-          content: [{ type: 'text', text: prompt }],
-        });
+      let saved: { threadId: string; promptMessageId: string };
       try {
-        const result = await send({
-          threadId,
-          prompt,
-          clientRequestId: sendIdentity.current.id,
-        });
-        drafts.delete(draftKey);
-        sendIdentity.current = null;
-        if (mounted.current) {
-          if (!threadId)
-            navigate(`/chat/${result.threadId}`, { replace: true });
-          document.getElementById('chat-input')?.focus();
-        }
+        saved = await send({ threadId, prompt });
       } catch {
         if (mounted.current) {
           setError(
-            'Couldn’t send your message. Check your connection and send again.',
+            'Couldn’t save your message. Check your connection and send again.',
           );
-          setNewMessage(null);
           runtime.thread.composer.setText(prompt);
-          drafts.set(draftKey, prompt);
-          setDraftLength(prompt.length);
+          setPending(false);
+          setSaving(false);
         }
-      } finally {
-        submitting.current = false;
-        if (mounted.current) setPending(false);
+        busy.current = false;
+        return;
       }
+      if (mounted.current) {
+        setThreadId(saved.threadId);
+        setSaving(false);
+      }
+      await generateReply(saved.promptMessageId, saved.threadId);
+      busy.current = false;
     },
     onCancel: async () => {
-      if (!threadId || pending) return;
+      if (!threadId) return;
+      setStopping(true);
       try {
         await stop({ threadId });
-        setError('');
       } catch {
         setError('Couldn’t stop the response. Please try again.');
+      } finally {
+        setStopping(false);
       }
     },
   });
@@ -181,13 +201,12 @@ function Conversation({ threadId }: { threadId?: string }) {
         )}
         <ChatThread
           running={running}
-          stopping={request?.status === 'stopping'}
-          submitting={pending}
-          requestError={request?.errorCode}
+          canStop={streaming && !stopping}
+          stopping={stopping}
+          submitting={saving}
           loading={loading}
           error={error}
           connected={connected}
-          requestStatus={request?.status}
           loadingMore={status === 'LoadingMore'}
           onLoadMore={
             status === 'CanLoadMore' || status === 'LoadingMore'
@@ -199,30 +218,8 @@ function Conversation({ threadId }: { threadId?: string }) {
             setDraftLength(text.length);
           }}
           onRetry={
-            request?.status === 'failed' && !pending
-              ? () => {
-                  if (submitting.current) return;
-                  submitting.current = true;
-                  setPending(true);
-                  setError('');
-                  retryIdentity.current ??= crypto.randomUUID();
-                  void retry({
-                    requestId: request._id,
-                    clientRequestId: retryIdentity.current,
-                  })
-                    .then(() => {
-                      retryIdentity.current = null;
-                    })
-                    .catch(() => {
-                      setError(
-                        'Couldn’t retry. Check your connection and try again.',
-                      );
-                    })
-                    .finally(() => {
-                      submitting.current = false;
-                      if (mounted.current) setPending(false);
-                    });
-                }
+            !running && retryPrompt
+              ? () => void generateReply(retryPrompt)
               : undefined
           }
         />

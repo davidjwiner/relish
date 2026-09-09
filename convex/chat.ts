@@ -8,22 +8,18 @@ import {
   syncStreams,
   vStreamArgs,
 } from '@convex-dev/agent';
-import { paginationOptsValidator } from 'convex/server';
+import { paginationOptsValidator, getServiceToken } from 'convex/server';
 import { ConvexError, v } from 'convex/values';
-import { components, internal } from './_generated/api';
+import { api, components } from './_generated/api';
 import {
   mutation,
   query,
-  internalMutation,
-  internalQuery,
+  action,
   type QueryCtx,
   type MutationCtx,
 } from './_generated/server';
-import type { Doc, Id } from './_generated/dataModel';
-
-export const MAX_PROMPT_LENGTH = 8000;
-export const isActive = (status: string) =>
-  ['queued', 'running', 'stopping'].includes(status);
+import type { Id } from './_generated/dataModel';
+import { musicAgent } from './lib/musicAgent';
 
 async function currentUser(ctx: QueryCtx | MutationCtx) {
   const userId = await getAuthUserId(ctx);
@@ -31,7 +27,6 @@ async function currentUser(ctx: QueryCtx | MutationCtx) {
     throw new ConvexError('UNAUTHENTICATED');
   return userId;
 }
-
 async function ownedThread(
   ctx: QueryCtx | MutationCtx,
   threadId: string,
@@ -54,72 +49,28 @@ async function ownedThread(
   }
 }
 
-async function getLatestRequest(ctx: QueryCtx | MutationCtx, threadId: string) {
-  return ctx.db
-    .query('chatRequests')
-    .withIndex('by_thread', (q) => q.eq('threadId', threadId))
-    .order('desc')
-    .first();
-}
-function validateRequestId(id: string) {
-  if (!/^[a-zA-Z0-9-]{8,100}$/.test(id))
-    throw new ConvexError('INVALID_REQUEST');
-}
-async function existingRequest(
-  ctx: MutationCtx,
-  userId: Id<'users'>,
-  clientRequestId: string,
-) {
-  validateRequestId(clientRequestId);
-  return ctx.db
-    .query('chatRequests')
-    .withIndex('by_user_request', (q) =>
-      q.eq('userId', userId).eq('clientRequestId', clientRequestId),
-    )
-    .unique();
-}
-async function enqueue(
-  ctx: MutationCtx,
-  data: Pick<
-    Doc<'chatRequests'>,
-    'userId' | 'threadId' | 'clientRequestId' | 'promptMessageId'
-  >,
-) {
-  const requestId = await ctx.db.insert('chatRequests', {
-    ...data,
-    status: 'queued',
-  });
-  await ctx.scheduler.runAfter(0, internal.chatGeneration.generate, {
-    requestId,
-  });
-  await ctx.scheduler.runAfter(180_000, internal.chat.expireRequest, {
-    requestId,
-  });
-  return { threadId: data.threadId, requestId };
+async function requireThread(ctx: QueryCtx | MutationCtx, threadId: string) {
+  const thread = await ownedThread(ctx, threadId, await currentUser(ctx));
+  if (!thread) throw new ConvexError('CONVERSATION_UNAVAILABLE');
+  return thread;
 }
 
 export const listThreads = query({
   args: { paginationOpts: paginationOptsValidator },
-  handler: async (ctx, { paginationOpts }) => {
-    const userId = await currentUser(ctx);
-    return await ctx.runQuery(components.agent.threads.listThreadsByUserId, {
-      userId,
+  handler: async (ctx, { paginationOpts }) =>
+    ctx.runQuery(components.agent.threads.listThreadsByUserId, {
+      userId: await currentUser(ctx),
       paginationOpts,
-    });
-  },
+    }),
 });
 export const getThread = query({
   args: { threadId: v.string() },
   handler: async (ctx, { threadId }) => {
-    const userId = await currentUser(ctx);
-    const thread = await ownedThread(ctx, threadId, userId);
-    if (!thread) return null;
-    return {
-      title: thread.title ?? 'Conversation',
-      request: await getLatestRequest(ctx, threadId),
-    };
+    const thread = await ownedThread(ctx, threadId, await currentUser(ctx));
+    return thread ? { title: thread.title ?? 'Conversation' } : null;
   },
 });
+// This query is the bridge between Agent's persisted streams and the React hook.
 export const listMessages = query({
   args: {
     threadId: v.string(),
@@ -127,129 +78,103 @@ export const listMessages = query({
     streamArgs: vStreamArgs,
   },
   handler: async (ctx, args) => {
-    const page = await listUIMessages(ctx, components.agent, args);
+    await requireThread(ctx, args.threadId);
+    const messages = await listUIMessages(ctx, components.agent, args);
     const streams = await syncStreams(ctx, components.agent, {
       ...args,
       includeStatuses: ['streaming', 'aborted', 'finished'],
     });
     return {
-      ...page,
-      page: page.page.filter(
+      ...messages,
+      page: messages.page.filter(
         (m) => m.role === 'user' || m.role === 'assistant',
       ),
       streams,
     };
   },
 });
+// Save first so a generation failure never loses the user's message.
 export const send = mutation({
-  args: {
-    threadId: v.optional(v.string()),
-    prompt: v.string(),
-    clientRequestId: v.string(),
-  },
-  handler: async (
-    ctx,
-    args,
-  ): Promise<{ threadId: string; requestId: Id<'chatRequests'> }> => {
+  args: { threadId: v.optional(v.string()), prompt: v.string() },
+  handler: async (ctx, { threadId, prompt }) => {
     const userId = await currentUser(ctx);
-    const prompt = args.prompt.trim();
-    if (!prompt || prompt.length > MAX_PROMPT_LENGTH)
+    prompt = prompt.trim();
+    if (!prompt || prompt.length > 8000)
       throw new ConvexError('INVALID_MESSAGE');
-    const existing = await existingRequest(ctx, userId, args.clientRequestId);
-    if (existing)
-      return { threadId: existing.threadId, requestId: existing._id };
-    let threadId = args.threadId;
-    if (threadId) {
-      const latest = await getLatestRequest(ctx, threadId);
-      if (latest && isActive(latest.status))
-        throw new ConvexError('RESPONSE_IN_PROGRESS');
-    } else {
+    if (threadId) await requireThread(ctx, threadId);
+    else
       threadId = await createThread(ctx, components.agent, {
         userId,
         title: prompt.replace(/\s+/g, ' ').slice(0, 60),
       });
-    }
     const { messageId } = await saveMessage(ctx, components.agent, {
       threadId,
       userId,
       prompt,
     });
-    return enqueue(ctx, {
-      userId,
-      threadId,
-      promptMessageId: messageId,
-      clientRequestId: args.clientRequestId,
-    });
+    return { threadId, promptMessageId: messageId };
+  },
+});
+// Called directly by the browser. Agent owns messages and stream state entirely.
+export const generate = action({
+  args: { threadId: v.string(), promptMessageId: v.string() },
+  handler: async (ctx, args): Promise<void> => {
+    if (!(await ctx.runQuery(api.chat.getThread, { threadId: args.threadId })))
+      throw new ConvexError('CONVERSATION_UNAVAILABLE');
+    const [prompt] = await ctx.runQuery(
+      components.agent.messages.getMessagesByIds,
+      { messageIds: [args.promptMessageId] },
+    );
+    if (
+      !prompt ||
+      prompt.threadId !== args.threadId ||
+      prompt.message?.role !== 'user'
+    )
+      throw new ConvexError('INVALID_MESSAGE');
+    try {
+      await getServiceToken('ai-gateway');
+    } catch {
+      throw new ConvexError('GATEWAY_UNAVAILABLE');
+    }
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 120_000);
+    try {
+      const result = await musicAgent.streamText(
+        ctx,
+        { threadId: args.threadId },
+        {
+          promptMessageId: args.promptMessageId,
+          abortSignal: controller.signal,
+          maxOutputTokens: 8192,
+          maxRetries: 0,
+          providerOptions: { convexGateway: { reasoningEffort: 'medium' } },
+        },
+        { saveStreamDeltas: { throttleMs: 100 } },
+      );
+      if (
+        ['error', 'length'].includes(await result.finishReason) ||
+        !(await result.text).trim()
+      )
+        throw new Error('Incomplete response');
+    } catch {
+      throw new ConvexError('GENERATION_FAILED');
+    } finally {
+      clearTimeout(timeout);
+    }
   },
 });
 export const stop = mutation({
   args: { threadId: v.string() },
   handler: async (ctx, { threadId }) => {
-    const request = await getLatestRequest(ctx, threadId);
-    if (!request || !isActive(request.status)) return;
-    // A queued action observes the terminal state and exits without a model call.
-    // A running action polls this state and aborts its provider request before releasing the lock.
-    await ctx.db.patch(
-      request._id,
-      request.status === 'queued'
-        ? { status: 'stopped', finishedAt: Date.now() }
-        : { status: 'stopping' },
-    );
-  },
-});
-export const retry = mutation({
-  args: { requestId: v.id('chatRequests'), clientRequestId: v.string() },
-  handler: async (
-    ctx,
-    args,
-  ): Promise<{ threadId: string; requestId: Id<'chatRequests'> }> => {
-    const userId = await currentUser(ctx);
-    const request = await ctx.db.get(args.requestId);
-    if (!request || request.userId !== userId)
-      throw new ConvexError('CONVERSATION_UNAVAILABLE');
-    const existing = await existingRequest(ctx, userId, args.clientRequestId);
-    if (existing)
-      return { threadId: existing.threadId, requestId: existing._id };
-    const latest = await getLatestRequest(ctx, request.threadId);
-    if (latest?._id !== request._id || request.status !== 'failed')
-      throw new ConvexError('RETRY_UNAVAILABLE');
-    return enqueue(ctx, {
-      userId,
-      threadId: request.threadId,
-      promptMessageId: request.promptMessageId,
-      clientRequestId: args.clientRequestId,
-    });
-  },
-});
-
-export const expireRequest = internalMutation({
-  args: { requestId: v.id('chatRequests') },
-  handler: async (ctx, { requestId }) => {
-    const request = await ctx.db.get(requestId);
-    if (!request || !isActive(request.status)) return;
-    const expiresAt = (request.startedAt ?? request._creationTime) + 180_000;
-    if (Date.now() < expiresAt) {
-      await ctx.scheduler.runAfter(
-        expiresAt - Date.now(),
-        internal.chat.expireRequest,
-        { requestId },
-      );
-      return;
-    }
-    // Fence stream writes before releasing a crashed worker's conversation lock.
+    await requireThread(ctx, threadId);
     const streams = await listStreams(ctx, components.agent, {
-      threadId: request.threadId,
+      threadId,
       includeStatuses: ['streaming'],
     });
     for (const stream of streams)
       await abortStream(ctx, components.agent, {
         streamId: stream.streamId,
-        reason: 'Request timed out',
+        reason: 'Stopped by user',
       });
-    await ctx.db.patch(requestId, {
-      status: request.status === 'stopping' ? 'stopped' : 'failed',
-      finishedAt: Date.now(),
-      errorCode: 'TIMEOUT',
-    });
   },
 });

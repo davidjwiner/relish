@@ -10,7 +10,6 @@
 
 import type * as auth from "../auth.js";
 import type * as chat from "../chat.js";
-import type * as chatGeneration from "../chatGeneration.js";
 import type * as http from "../http.js";
 import type * as lib_musicAgent from "../lib/musicAgent.js";
 import type * as users from "../users.js";
@@ -24,7 +23,6 @@ import type {
 declare const fullApi: ApiFromModules<{
   auth: typeof auth;
   chat: typeof chat;
-  chatGeneration: typeof chatGeneration;
   http: typeof http;
   "lib/musicAgent": typeof lib_musicAgent;
   users: typeof users;
