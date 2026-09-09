@@ -12,6 +12,12 @@ import type * as auth from "../auth.js";
 import type * as chat from "../chat.js";
 import type * as http from "../http.js";
 import type * as lib_musicAgent from "../lib/musicAgent.js";
+import type * as lib_musicResearch from "../lib/musicResearch.js";
+import type * as lib_preferenceAuth from "../lib/preferenceAuth.js";
+import type * as lib_preferenceTools from "../lib/preferenceTools.js";
+import type * as lib_preferenceTypes from "../lib/preferenceTypes.js";
+import type * as preferenceWorkflows from "../preferenceWorkflows.js";
+import type * as preferences from "../preferences.js";
 import type * as users from "../users.js";
 
 import type {
@@ -25,6 +31,12 @@ declare const fullApi: ApiFromModules<{
   chat: typeof chat;
   http: typeof http;
   "lib/musicAgent": typeof lib_musicAgent;
+  "lib/musicResearch": typeof lib_musicResearch;
+  "lib/preferenceAuth": typeof lib_preferenceAuth;
+  "lib/preferenceTools": typeof lib_preferenceTools;
+  "lib/preferenceTypes": typeof lib_preferenceTypes;
+  preferenceWorkflows: typeof preferenceWorkflows;
+  preferences: typeof preferences;
   users: typeof users;
 }>;
 
@@ -56,4 +68,6 @@ export declare const internal: FilterApi<
 
 export declare const components: {
   agent: import("@convex-dev/agent/_generated/component.js").ComponentApi<"agent">;
+  workflow: import("@convex-dev/workflow/_generated/component.js").ComponentApi<"workflow">;
+  exa: import("@exalabs/convex-exa/_generated/component.js").ComponentApi<"exa">;
 };
