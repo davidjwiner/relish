@@ -61,12 +61,14 @@ describe('Agent chat proof of concept', () => {
         })
       ).page,
     ).toHaveLength(0);
-    await expect(
-      b.query(api.chat.listMessages, {
-        threadId: saved.threadId,
-        paginationOpts: { cursor: null, numItems: 30 },
-      }),
-    ).rejects.toThrow('CONVERSATION_UNAVAILABLE');
+    expect(
+      (
+        await b.query(api.chat.listMessages, {
+          threadId: saved.threadId,
+          paginationOpts: { cursor: null, numItems: 30 },
+        })
+      ).page,
+    ).toHaveLength(0);
     await expect(
       b.mutation(api.chat.send, { ...input, threadId: saved.threadId }),
     ).rejects.toThrow('CONVERSATION_UNAVAILABLE');
@@ -76,6 +78,77 @@ describe('Agent chat proof of concept', () => {
     await expect(
       b.mutation(api.chat.stop, { threadId: saved.threadId }),
     ).rejects.toThrow('CONVERSATION_UNAVAILABLE');
+  });
+  it('only lets the owner delete a conversation and removes its messages', async () => {
+    const { t, a, b } = await setup();
+    const saved = await a.mutation(api.chat.send, input);
+    const args = { threadId: saved.threadId };
+    await expect(t.mutation(api.chat.deleteThread, args)).rejects.toThrow(
+      'UNAUTHENTICATED',
+    );
+    await expect(b.mutation(api.chat.deleteThread, args)).rejects.toThrow(
+      'CONVERSATION_UNAVAILABLE',
+    );
+    expect(await a.query(api.chat.getThread, args)).not.toBeNull();
+    await a.mutation(api.chat.deleteThread, args);
+    expect(await a.query(api.chat.getThread, args)).toBeNull();
+    expect(
+      (
+        await a.query(api.chat.listThreads, {
+          paginationOpts: { cursor: null, numItems: 20 },
+        })
+      ).page,
+    ).toHaveLength(0);
+    expect(
+      (
+        await a.query(api.chat.listMessages, {
+          ...args,
+          paginationOpts: { cursor: null, numItems: 30 },
+        })
+      ).page,
+    ).toHaveLength(0);
+    const messages = await t.run((ctx) =>
+      listMessages(ctx, components.agent, {
+        ...args,
+        paginationOpts: { cursor: null, numItems: 30 },
+      }),
+    );
+    expect(messages.page).toHaveLength(0);
+    await expect(
+      a.mutation(api.chat.send, { ...args, ...input }),
+    ).rejects.toThrow('CONVERSATION_UNAVAILABLE');
+  });
+  it('hides long conversations immediately and finishes batched cleanup', async () => {
+    vi.useFakeTimers();
+    try {
+      const { t, a } = await setup();
+      const { threadId } = await a.mutation(api.chat.send, input);
+      for (let i = 0; i < 105; i++)
+        await a.mutation(api.chat.send, { threadId, prompt: `Message ${i}` });
+      await a.mutation(api.chat.deleteThread, { threadId });
+      expect(await a.query(api.chat.getThread, { threadId })).toBeNull();
+      expect(
+        (
+          await a.query(api.chat.listThreads, {
+            paginationOpts: { cursor: null, numItems: 20 },
+          })
+        ).page,
+      ).toHaveLength(0);
+      await t.finishAllScheduledFunctions(() => vi.runAllTimers());
+      const thread = await t.run((ctx) =>
+        ctx.runQuery(components.agent.threads.getThread, { threadId }),
+      );
+      expect(thread).toBeNull();
+      const messages = await t.run((ctx) =>
+        listMessages(ctx, components.agent, {
+          threadId,
+          paginationOpts: { cursor: null, numItems: 30 },
+        }),
+      );
+      expect(messages.page).toHaveLength(0);
+    } finally {
+      vi.useRealTimers();
+    }
   });
   it('saves and generates directly through Agent without application chat tables', async () => {
     const { t, a } = await setup();

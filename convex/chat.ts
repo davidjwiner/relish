@@ -70,6 +70,27 @@ export const getThread = query({
     return thread ? { title: thread.title ?? 'Conversation' } : null;
   },
 });
+export const deleteThread = mutation({
+  args: { threadId: v.string() },
+  handler: async (ctx, { threadId }) => {
+    await requireThread(ctx, threadId);
+    const streams = await listStreams(ctx, components.agent, {
+      threadId,
+      includeStatuses: ['streaming'],
+    });
+    for (const stream of streams)
+      await abortStream(ctx, components.agent, {
+        streamId: stream.streamId,
+        reason: 'Conversation deleted',
+      });
+    // Remove access immediately while Agent cleans up large histories in batches.
+    await ctx.runMutation(components.agent.threads.updateThread, {
+      threadId,
+      patch: { userId: `deleted:${threadId}` },
+    });
+    await musicAgent.deleteThreadAsync(ctx, { threadId });
+  },
+});
 // This query is the bridge between Agent's persisted streams and the React hook.
 export const listMessages = query({
   args: {
@@ -78,7 +99,9 @@ export const listMessages = query({
     streamArgs: vStreamArgs,
   },
   handler: async (ctx, args) => {
-    await requireThread(ctx, args.threadId);
+    // Active subscriptions can rerun after the conversation is deleted.
+    if (!(await ownedThread(ctx, args.threadId, await currentUser(ctx))))
+      return { page: [], isDone: true, continueCursor: '', streams: undefined };
     const messages = await listUIMessages(ctx, components.agent, args);
     const streams = await syncStreams(ctx, components.agent, {
       ...args,
