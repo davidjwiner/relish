@@ -25,6 +25,16 @@ For a new Convex deployment, run `pnpm setup:auth` and configure a Google OAuth 
 
 Set `AUTH_GOOGLE_ID` and `AUTH_GOOGLE_SECRET` in Convex. See [.env.example](./.env.example) for configuration names. Keep secrets out of frontend environment variables and source control.
 
+## Chat
+
+Chat uses assistant-ui with Convex Agent for persisted conversations and streaming. The default model is `openai/gpt-5.6-sol` with medium reasoning through the Convex AI Gateway. Backend requests use deployment-scoped gateway authentication; no OpenAI API key belongs in frontend configuration.
+
+Run `pnpm dev:backend` to install/sync the Agent component and regenerate bindings. Enable AI Gateway for your Convex team before expecting model replies. On September 9, 2026, a real request against this development deployment was rejected because gateway access is not enabled; Convex reports that a paid plan is required. Conversation storage, navigation, and recoverable errors work, but a successful real model round trip remains unverified.
+
+Once gateway access is enabled, open Chat, send a prompt, verify a streamed reply and a contextual follow-up, reload the conversation URL, then test stopping a response. The Retry response button reuses the saved prompt. Threads are private to the signed-in user. Drafts stay in memory while navigating and are cleared on reload/logout.
+
+Web research, saved taste preferences, and show lookup arrive in later steps. See [Step 2](./step-2-chat-interface.md) for the design and verification status.
+
 ## Checks
 
 ```sh
