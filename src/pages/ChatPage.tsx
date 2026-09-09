@@ -36,24 +36,6 @@ function Conversation({ initialThreadId }: { initialThreadId?: string }) {
     threadId && thread ? { threadId } : 'skip',
     { initialNumItems: 30, stream: true },
   );
-  const background = useQuery(
-    api.preferenceWorkflows.statuses,
-    threadId && thread
-      ? {
-          threadId,
-          promptMessageIds: results
-            .filter((m) => m.role === 'user' && m.status === 'success')
-            .slice(-100)
-            .map((m) => m.id),
-        }
-      : 'skip',
-  );
-  const backgroundPending = background?.some(
-    (item) => item.status === 'inProgress',
-  );
-  const backgroundFailed = background?.some(
-    (item) => item.status === 'failed' || item.status === 'canceled',
-  );
   const send = useMutation(api.chat.send).withOptimisticUpdate(
     (store, args) => {
       if (args.threadId)
@@ -212,16 +194,6 @@ function Conversation({ initialThreadId }: { initialThreadId?: string }) {
             Relish
           </span>
         </header>
-        {(backgroundPending || backgroundFailed) && (
-          <p
-            role="status"
-            className="border-b border-line px-5 py-3 text-sm text-muted sm:px-8"
-          >
-            {backgroundPending
-              ? 'Research is in progress. It continues if you leave this chat or stop the response.'
-              : 'A research request did not finish. Check its reply below; you can ask to list saved preferences before trying again.'}
-          </p>
-        )}
         {loading && (
           <div className="px-5">
             <SlowOperation />

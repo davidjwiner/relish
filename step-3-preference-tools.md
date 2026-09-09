@@ -21,7 +21,7 @@ User → Agent tool
 
 A direct write saves the preference, its confirmation message, and its retry result in one transaction. The tool returns that result, and the Agent loop stops without another model call. No workflow is started for ordinary CRUD.
 
-Research returns a workflow reference promptly. Chat subscribes to its status and receives the eventual completion through Agent messages. Stop aborts the chat response; an already-started research workflow continues.
+Research returns a workflow reference promptly. Chat receives completion or failure through Agent messages, without a separate status banner. Stop aborts the chat response; an already-started research workflow continues.
 
 ## Data and tools
 
@@ -65,7 +65,6 @@ Use `@exalabs/convex-exa` 0.1.1 for a bounded search with text from at most five
 - `convex/lib/preferenceTools.ts`: Agent tool definitions and stop condition after direct confirmations.
 - `convex/preferenceWorkflows.ts`: research startup, durable steps, completion, and status.
 - `convex/lib/musicResearch.ts`: Exa access and evidence interpretation.
-- `src/pages/ChatPage.tsx`: background research status.
 
 Run `pnpm test`, `pnpm lint`, `pnpm format:check`, and `pnpm build`. Tests exercise direct CRUD without registering Workflow, the Agent tool loop without a follow-up model call, ownership, stale revisions, duplicate requests/completions, retries after deletion, and research failures/evidence.
 
