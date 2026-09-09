@@ -1,5 +1,4 @@
 # Relish
-
 A music-taste app built with React and Convex. See [design.md](./design.md) for the product plan.
 
 ## Development
@@ -44,4 +43,3 @@ pnpm test
 pnpm build
 ```
 
-See [package.json](./package.json) for all commands.

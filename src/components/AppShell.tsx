@@ -1,9 +1,10 @@
 import { useState, type ReactNode } from 'react';
 import { useAuthActions } from '@convex-dev/auth/react';
 import { useAction } from 'convex/react';
-import { NavLink } from 'react-router-dom';
+import { NavLink, useLocation } from 'react-router-dom';
 import { LogOut, Menu, X, MessageCircle, Disc3, Radar } from 'lucide-react';
 import { api } from '../../convex/_generated/api';
+import { ConversationList } from '../chat/ConversationList';
 import { Brand } from './Brand';
 import { SlowOperation } from './Recovery';
 
@@ -20,6 +21,7 @@ export function AppShell({
   name?: string;
   children: ReactNode;
 }) {
+  const isChat = useLocation().pathname.startsWith('/chat');
   const [open, setOpen] = useState(false);
   const [pending, setPending] = useState(false);
   const [error, setError] = useState('');
@@ -40,14 +42,20 @@ export function AppShell({
     }
   }
   return (
-    <div className="min-h-dvh md:flex">
+    <div
+      className={
+        isChat
+          ? 'flex h-dvh flex-col overflow-hidden md:flex-row'
+          : 'min-h-dvh md:flex'
+      }
+    >
       <a
         className="sr-only focus:not-sr-only focus:fixed focus:top-3 focus:left-3 focus:z-50 focus:rounded-lg focus:bg-white focus:p-3"
         href="#main"
       >
         Skip to content
       </a>
-      <aside className="border-b border-line bg-white md:fixed md:inset-y-0 md:w-64 md:border-r md:border-b-0">
+      <aside className="z-20 shrink-0 border-b border-line bg-white md:fixed md:inset-y-0 md:w-64 md:border-r md:border-b-0">
         <div className="flex items-center justify-between p-6 md:px-7 md:py-9">
           <Brand />
           <button
@@ -62,7 +70,7 @@ export function AppShell({
         </div>
         <div
           id="app-navigation"
-          className={`${open ? 'flex' : 'hidden'} flex-col px-4 pb-5 md:flex md:h-[calc(100dvh-108px)]`}
+          className={`${open ? 'flex' : 'hidden'} max-h-[calc(100dvh-100px)] flex-col overflow-y-auto px-4 pb-5 md:flex md:h-[calc(100dvh-108px)]`}
         >
           <nav aria-label="Main navigation" className="space-y-2">
             {links.map(({ to, label, icon: Icon }) => (
@@ -79,7 +87,8 @@ export function AppShell({
               </NavLink>
             ))}
           </nav>
-          <div className="mt-8 border-t border-line px-3 pt-5 md:mt-auto">
+          {isChat && <ConversationList onSelect={() => setOpen(false)} />}
+          <div className="mt-8 shrink-0 border-t border-line px-3 pt-5 md:mt-auto">
             <p className="truncate font-semibold">{name || 'Your space'}</p>
             <button
               disabled={pending}
@@ -101,7 +110,11 @@ export function AppShell({
       <main
         id="main"
         tabIndex={-1}
-        className="min-w-0 flex-1 px-6 py-9 sm:px-10 md:ml-64 lg:px-16 lg:py-12"
+        className={
+          isChat
+            ? 'min-h-0 min-w-0 flex-1 md:ml-64'
+            : 'min-w-0 flex-1 px-6 py-9 sm:px-10 md:ml-64 lg:px-16 lg:py-12'
+        }
       >
         {children}
       </main>
