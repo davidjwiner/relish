@@ -34,6 +34,18 @@ Once gateway access is enabled, open Chat, send a prompt, verify a streamed repl
 
 Web research, saved taste preferences, and show lookup arrive in later steps. See [Step 2](./step-2-chat-interface.md) for the design and verification status.
 
+## Production deployments
+
+GitHub Actions deploys the committed `main` branch to https://graceful-monitor-911.convex.site whenever a push lands on `main`. You can also run **Deploy production** from the repository's Actions tab with `main` selected. The workflow installs the locked dependencies, runs lint, tests, and the build, then deploys the Convex backend and static frontend. Deployments run one at a time.
+
+One-time setup:
+
+1. In the Convex dashboard, select the `graceful-monitor-911` production deployment and generate a production deploy key.
+2. In GitHub → Settings → Secrets and variables → Actions, add it as `CONVEX_DEPLOY_KEY` (a repository secret or a secret in the `production` environment). Never commit the key.
+3. Keep application secrets in Convex. Set production `SITE_URL` to `https://graceful-monitor-911.convex.site` and allow `https://graceful-monitor-911.convex.site/api/auth/callback/google` in the Google OAuth client.
+
+The hosting component preserves existing authentication routes and supports direct visits to client-side routes. The workflow supplies deployment credentials; it does not use a developer's `.env.local` or upload their working directory.
+
 ## Checks
 
 ```sh
@@ -42,4 +54,3 @@ pnpm lint
 pnpm test
 pnpm build
 ```
-
