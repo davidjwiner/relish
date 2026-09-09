@@ -14,7 +14,7 @@ import { currentUser, requirePrompt } from './lib/preferenceAuth';
 import {
   ownerArgs,
   requestValidator,
-  validateTarget,
+  validatePreferenceRequest,
   type ResearchResult,
 } from './lib/preferenceTypes';
 
@@ -48,31 +48,14 @@ export const begin = internalMutation({
           'This message already started a workflow. Its result will appear in this conversation; use a new message for another request.',
       };
     const request = args.request;
+    validatePreferenceRequest(request, prompt.text);
     if (
-      request.kind === 'search' &&
-      (!request.query.trim() || request.query.length > 1000)
+      request.kind !== 'search' &&
+      !(request.kind === 'create' && !request.target)
     )
-      throw new ConvexError('INVALID_RESEARCH_QUERY');
-    if (request.kind === 'create') {
-      if (request.target) validateTarget(request.target);
-      if (!request.target && !request.researchQuery?.trim())
-        throw new ConvexError('TARGET_REQUIRED');
-      if ((request.researchQuery?.length ?? 0) > 1000)
-        throw new ConvexError('INVALID_RESEARCH_QUERY');
-    }
-    if ('reason' in request && request.reason != null) {
-      if (
-        request.reason.length > 1000 ||
-        !prompt.text?.includes(request.reason)
-      )
-        throw new ConvexError('REASON_MUST_QUOTE_USER');
-    }
-    if (
-      'expectedRevision' in request &&
-      (!Number.isSafeInteger(request.expectedRevision) ||
-        request.expectedRevision < 1)
-    )
-      throw new ConvexError('INVALID_REVISION');
+      throw new ConvexError('RESEARCH_NOT_REQUIRED');
+    if (prompt.providerOptions?.relish?.preferenceResult)
+      throw new ConvexError('PREFERENCE_ALREADY_HANDLED');
     const workflowId = await start(
       ctx,
       internal.preferenceWorkflows.run,
@@ -92,11 +75,7 @@ export const begin = internalMutation({
     });
     return {
       workflowId,
-      status:
-        request.kind === 'search' ||
-        (request.kind === 'create' && !request.target)
-          ? 'Research started. The result will appear here.'
-          : 'Preference change started. The result will appear here.',
+      status: 'Research started. The result will appear here.',
     };
   },
 });

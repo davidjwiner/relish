@@ -51,10 +51,10 @@ const create: PreferenceRequest = {
   reaction: 'like',
   reason: null,
 };
-async function setup() {
+async function setup(withResearch = true) {
   const t = convexTest(schema, modules);
   agentTest.register(t);
-  registerWorkflow(t);
+  if (withResearch) registerWorkflow(t);
   const [alice, bob] = await t.run(async (ctx) => [
     await ctx.db.insert('users', { name: 'Alice' }),
     await ctx.db.insert('users', { name: 'Bob' }),
@@ -74,11 +74,10 @@ async function setup() {
       threadId: saved.threadId,
       prompt: 'Please change my saved preference.',
     });
-    await a.mutation(internal.preferenceWorkflows.begin, {
+    await a.mutation(internal.preferences.apply, {
       ...prompt,
       request,
     });
-    await finish();
     return prompt;
   };
   return { t, a, b, alice, saved, finish, list, next };
@@ -100,26 +99,18 @@ afterEach(() => {
   vi.clearAllMocks();
 });
 describe('Preference tools and workflows', () => {
-  it('saves a track without also liking its artist, and reuses duplicate starts and completions', async () => {
-    const { t, a, saved, finish, list } = await setup();
-    const first = await a.mutation(internal.preferenceWorkflows.begin, {
+  it('saves a track without also liking its artist, and reuses its result without a workflow', async () => {
+    const { t, a, saved, list } = await setup(false);
+    const first = await a.mutation(internal.preferences.apply, {
       ...saved,
       request: create,
     });
-    const second = await a.mutation(internal.preferenceWorkflows.begin, {
+    const second = await a.mutation(internal.preferences.apply, {
       ...saved,
       request: create,
     });
-    expect(second.workflowId).toBe(first.workflowId);
-    expect(
-      (
-        await a.query(api.preferenceWorkflows.statuses, {
-          threadId: saved.threadId,
-          promptMessageIds: [saved.promptMessageId],
-        })
-      )[0].status,
-    ).toBe('inProgress');
-    await finish();
+    expect(second).toBe(first);
+    expect(first).toBe('Saved Stick Season — Noah Kahan as a like.');
     const preferences = (await list()).page;
     expect(preferences).toHaveLength(1);
     expect(preferences[0]).toMatchObject({
@@ -133,8 +124,12 @@ describe('Preference tools and workflows', () => {
         messageIds: [saved.promptMessageId],
       }),
     );
-    expect(prompt?.providerOptions?.relish?.completionMessageId).toBeTruthy();
-    await a.action(api.chat.generate, saved); // Reuses workflow without making a model call.
+    expect(prompt?.providerOptions?.relish).toMatchObject({
+      preferenceResult: first,
+      completionMessageId: expect.any(String),
+    });
+    expect(prompt?.providerOptions?.relish?.workflowId).toBeUndefined();
+    await a.action(api.chat.generate, saved); // Reuses the committed receipt without making a model call.
     const messages = await t.run((ctx) =>
       listMessages(ctx, components.agent, {
         threadId: saved.threadId,
@@ -145,15 +140,15 @@ describe('Preference tools and workflows', () => {
       messages.page.filter((m) => m.text?.startsWith('Saved ')),
     ).toHaveLength(1);
   });
-  it('enforces user ownership for list, workflow start, status and writes', async () => {
-    const { t, a, b, saved, finish, list } = await setup();
+  it('enforces user ownership for list, status and direct writes', async () => {
+    const { t, a, b, saved, list } = await setup(false);
     await expect(
       t.query(api.preferences.list, {
         paginationOpts: { cursor: null, numItems: 30 },
       }),
     ).rejects.toThrow('UNAUTHENTICATED');
     await expect(
-      b.mutation(internal.preferenceWorkflows.begin, {
+      b.mutation(internal.preferences.apply, {
         ...saved,
         request: create,
       }),
@@ -164,11 +159,10 @@ describe('Preference tools and workflows', () => {
         promptMessageIds: [saved.promptMessageId],
       }),
     ).toEqual([]);
-    await a.mutation(internal.preferenceWorkflows.begin, {
+    await a.mutation(internal.preferences.apply, {
       ...saved,
       request: create,
     });
-    await finish();
     const preference = (await list()).page[0];
     expect(
       (
@@ -178,7 +172,7 @@ describe('Preference tools and workflows', () => {
       ).page,
     ).toEqual([]);
     const bPrompt = await b.mutation(api.chat.send, { prompt: 'Delete it' });
-    await b.mutation(internal.preferenceWorkflows.begin, {
+    await b.mutation(internal.preferences.apply, {
       ...bPrompt,
       request: {
         kind: 'delete',
@@ -186,16 +180,14 @@ describe('Preference tools and workflows', () => {
         expectedRevision: 1,
       },
     });
-    await finish();
     expect((await list()).page).toHaveLength(1);
   });
   it('preserves reasons on reaction changes and rejects stale revisions', async () => {
-    const { a, saved, finish, list, next } = await setup();
-    await a.mutation(internal.preferenceWorkflows.begin, {
+    const { a, saved, list, next } = await setup(false);
+    await a.mutation(internal.preferences.apply, {
       ...saved,
       request: { ...create, reason: 'because of the storytelling' },
     });
-    await finish();
     const p = (await list()).page[0];
     await next({
       kind: 'update',
@@ -213,20 +205,18 @@ describe('Preference tools and workflows', () => {
     await next({ kind: 'delete', preferenceId: p._id, expectedRevision: 2 });
     expect((await list()).page).toHaveLength(0);
     await a.action(api.chat.generate, saved);
-    await a.mutation(internal.preferenceWorkflows.begin, {
+    await a.mutation(internal.preferences.apply, {
       ...saved,
       request: create,
     });
-    await finish();
     expect((await list()).page).toHaveLength(0); // An old retry cannot restore the deleted like.
   });
   it('deduplicates equivalent artist and track names across new prompts', async () => {
-    const { a, saved, finish, list, next } = await setup();
-    await a.mutation(internal.preferenceWorkflows.begin, {
+    const { a, saved, list, next } = await setup(false);
+    await a.mutation(internal.preferences.apply, {
       ...saved,
       request: create,
     });
-    await finish();
     await next({
       ...create,
       target: {
@@ -239,9 +229,9 @@ describe('Preference tools and workflows', () => {
     expect((await list()).page).toHaveLength(1);
   });
   it('rejects malformed targets, revisions, mismatched prompts and invented reasons', async () => {
-    const { a, saved } = await setup();
+    const { a, saved } = await setup(false);
     await expect(
-      a.mutation(internal.preferenceWorkflows.begin, {
+      a.mutation(internal.preferences.apply, {
         ...saved,
         request: {
           ...create,
@@ -250,7 +240,7 @@ describe('Preference tools and workflows', () => {
       }),
     ).rejects.toThrow('needs an artist');
     await expect(
-      a.mutation(internal.preferenceWorkflows.begin, {
+      a.mutation(internal.preferences.apply, {
         ...saved,
         request: { ...create, reason: 'I love the banjo' },
       }),
@@ -259,12 +249,44 @@ describe('Preference tools and workflows', () => {
       prompt: 'Other conversation',
     });
     await expect(
-      a.mutation(internal.preferenceWorkflows.begin, {
+      a.mutation(internal.preferences.apply, {
         ...saved,
         promptMessageId: other.promptMessageId,
         request: create,
       }),
     ).rejects.toThrow('INVALID_MESSAGE');
+  });
+  it('rejects research workflows for resolved CRUD and keeps retry paths separate', async () => {
+    const { a, saved, finish, list } = await setup();
+    await expect(
+      a.mutation(internal.preferenceWorkflows.begin, {
+        ...saved,
+        request: create,
+      }),
+    ).rejects.toThrow('RESEARCH_NOT_REQUIRED');
+    await a.mutation(internal.preferences.apply, { ...saved, request: create });
+    await expect(
+      a.mutation(internal.preferenceWorkflows.begin, {
+        ...saved,
+        request: { kind: 'search', query: 'Another request' },
+      }),
+    ).rejects.toThrow('PREFERENCE_ALREADY_HANDLED');
+    const researchPrompt = await a.mutation(api.chat.send, {
+      threadId: saved.threadId,
+      prompt: 'Save an unknown track',
+    });
+    await a.mutation(internal.preferenceWorkflows.begin, {
+      ...researchPrompt,
+      request: { ...create, target: null, researchQuery: 'First track' },
+    });
+    await expect(
+      a.mutation(internal.preferences.apply, {
+        ...researchPrompt,
+        request: create,
+      }),
+    ).rejects.toThrow('RESEARCH_ALREADY_STARTED');
+    await finish();
+    expect((await list()).page).toHaveLength(1);
   });
   it('researches and saves a verified target with citations', async () => {
     const { a, t, saved, finish, list } = await setup();
@@ -362,7 +384,11 @@ describe('Preference tools and workflows', () => {
     const { t, a, saved, finish, list } = await setup();
     await a.mutation(internal.preferenceWorkflows.begin, {
       ...saved,
-      request: create,
+      request: {
+        ...create,
+        target: null,
+        researchQuery: 'First track in the episode',
+      },
     });
     await t.run((ctx) =>
       ctx.runMutation(components.agent.threads.updateThread, {

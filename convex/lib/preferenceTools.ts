@@ -12,6 +12,8 @@ export function preferenceTools(
 ) {
   const begin = (request: PreferenceRequest) =>
     ctx.runMutation(internal.preferenceWorkflows.begin, { ...owner, request });
+  const apply = (request: PreferenceRequest) =>
+    ctx.runMutation(internal.preferences.apply, { ...owner, request });
   return {
     searchMusic: createTool({
       description:
@@ -41,7 +43,10 @@ export function preferenceTools(
         reaction: z.enum(['like', 'dislike']),
         reason: z.string().max(1000).nullable(),
       }),
-      execute: async (_ctx, input) => begin({ kind: 'create', ...input }),
+      execute: async (_ctx, input) =>
+        input.target
+          ? apply({ kind: 'create', ...input })
+          : begin({ kind: 'create', ...input }),
     }),
     updatePreference: createTool({
       description:
@@ -53,7 +58,7 @@ export function preferenceTools(
         reason: z.string().max(1000).nullable().optional(),
       }),
       execute: async (_ctx, input) =>
-        begin({
+        apply({
           kind: 'update',
           ...input,
           preferenceId: input.preferenceId as Id<'preferences'>,
@@ -67,11 +72,23 @@ export function preferenceTools(
         expectedRevision: z.number().int().positive(),
       }),
       execute: async (_ctx, input) =>
-        begin({
+        apply({
           kind: 'delete',
           ...input,
           preferenceId: input.preferenceId as Id<'preferences'>,
         }),
     }),
   };
+}
+
+// Direct writes already persisted their visible receipt; no follow-up model call is needed.
+export function hasPreferenceReceipt(
+  results: Array<{ toolName: string; output: unknown }>,
+) {
+  return results.some(
+    (result) =>
+      ['createPreference', 'updatePreference', 'deletePreference'].includes(
+        result.toolName,
+      ) && typeof result.output === 'string',
+  );
 }

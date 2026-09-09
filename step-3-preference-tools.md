@@ -2,78 +2,71 @@
 
 ## Goal
 
-Extend the existing chat so users can research music and create, read, update, or delete saved artist and track preferences. For example, “Save the first track in Nora En Pure’s latest radio show” should resolve the episode and track, save the user’s like, and reply with the identified track and source.
+Extend [Chat](./step-2-chat-interface.md) so users can research music and create, read, update, or delete saved artist and track preferences. “I like Noah Kahan” saves immediately. “Save the first track in Nora En Pure’s latest radio show” researches the identity before saving it with a source.
 
-This implements [step 3](./design.md). The preferences screen, taste summaries, and Radar remain later steps.
+The preferences screen, taste summaries, and Radar remain later steps.
 
-## Approach
+## Implementation
 
-Keep Agent as the owner of conversations and messages, assistant-ui as the chat renderer, and the current Convex gateway model configuration. Add [Exa](https://www.convex.dev/components/exalabs/convex-exa) for search and page content, and [Workflow](https://docs.convex.dev/agents/workflows) for durable research and writes. Network and model calls run in actions invoked as workflow steps; database changes run in mutations.
+Agent owns conversations, tools, and messages. Resolved preference changes are ordinary tools backed by Convex mutations. Exa and Workflow are used when research is necessary:
 
 ```text
-User message → Agent tool
-  ├─ read preferences → authorized query → tool result
-  └─ search or change preferences → start Workflow → workflow ID
-       → research if needed → resolve target → commit change
-       → persist outcome + assistant message in the original thread
+User → Agent tool
+  ├─ listPreferences → authorized query → tool result
+  ├─ create/update/delete resolved preference → mutation + saved confirmation
+  └─ search or research-and-save → Workflow
+       → Exa search → gateway model resolves evidence
+       → preference mutation if requested → sourced completion message
 ```
 
-The tool returns promptly with “Research started” or “Saving preference.” The existing message subscription receives the eventual result even after navigation or reload. Ordinary chat keeps its current generation path; do not move every conversation turn into a workflow.
+A direct write saves the preference, its confirmation message, and its retry result in one transaction. The tool returns that result, and the Agent loop stops without another model call. No workflow is started for ordinary CRUD.
+
+Research returns a workflow reference promptly. Chat subscribes to its status and receives the eventual completion through Agent messages. Stop aborts the chat response; an already-started research workflow continues.
 
 ## Data and tools
 
-Add these application tables alongside the auth tables:
+Three application tables accompany the existing authentication tables:
 
-| Table         | Fields and indexes                                                                                                                                                               |
-| ------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `artists`     | Name, optional verified external identity/source URL; index external identity.                                                                                                   |
-| `tracks`      | Title, artist IDs, optional album/version and verified external identity/source URL; index external identity.                                                                    |
-| `preferences` | User ID, a validated artist-or-track target, like/dislike, optional verbatim reason, originating message ID, creation/update timestamps, revision; index user and user + target. |
+| Table         | Purpose                                                                                                                                                         |
+| ------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `artists`     | Shared factual names, normalized identity keys, and optional source URLs.                                                                                       |
+| `tracks`      | Titles, artist IDs, optional versions/source URLs, and identity keys incorporating artists and version.                                                         |
+| `preferences` | User-owned artist-or-track target, like/dislike, optional verbatim reason, originating message ID, timestamps, and revision. Indexed by user and user + target. |
 
-Use exactly one preference per user and target, enforced by a transactional indexed lookup. Shared music identities contain factual metadata only. Prefer verified external IDs for deduplication; otherwise compare normalized names plus artist/version context and ask when identity remains ambiguous. Liking a track does not also like its artist.
+An indexed transactional lookup enforces one preference per user and target. Liking a track does not also like its artist. Normalized names are the initial identity strategy; ambiguous names or versions require clarification.
 
-Expose five tools through `convex/lib/musicAgent.ts`:
+The agent exposes five tools:
 
-| Tool               | Behavior                                                                                                            |
-| ------------------ | ------------------------------------------------------------------------------------------------------------------- |
-| `searchMusic`      | Start bounded Exa research; return sourced findings without saving preferences.                                     |
-| `listPreferences`  | Read the current user’s preferences with optional target filtering and bounded pagination.                          |
-| `createPreference` | Resolve a target and save an explicit like/dislike; return an existing match, or request an update if it conflicts. |
-| `updatePreference` | Change reaction or reason for an owned preference, checking its expected revision.                                  |
-| `deletePreference` | Remove an owned preference, checking its expected revision.                                                         |
+- `listPreferences`: read owned preferences, IDs, and revisions with bounded pagination.
+- `createPreference`: save an explicit like/dislike directly when the target is resolved. With an unresolved target and research query, start research-and-save instead.
+- `updatePreference`: change an owned preference using its expected revision; omit the reason to preserve it, or pass null to remove it.
+- `deletePreference`: remove an owned preference using its expected revision.
+- `searchMusic`: research without saving a preference.
 
-Treat “I love Stick Season” as an explicit like. Questions, recommendations, and inferred traits do not create preferences. Ask for clarification when a target or intended change is unclear; do not require an extra confirmation for an unambiguous request. Retargeting means deleting the old preference and creating a new one.
+Recommendations, questions, inferred traits, and show dismissals do not create preferences. New reasons must quote the originating user message. Unambiguous requests need no extra confirmation.
 
-## Workflow and correctness
+## Ownership and retries
 
-1. **Authorize and start.** Derive the user from authentication, verify thread and prompt ownership, and pass trusted identity into the internal workflow. Never accept a model-supplied user ID. Every read/write checks ownership again; background steps use the captured identity rather than assuming a browser session exists.
-2. **Research when needed.** Search with Exa and fetch relevant results, capped initially at three searches and five pages per operation. Return bounded excerpts, titles, URLs, and retrieval dates. Resolve relative terms such as “latest” at operation start. If an episode or track cannot be verified, finish with a clarification message and no write. Treat web content as evidence, never instructions.
-3. **Validate and commit.** Validate structured results and apply the requested change in one mutation. Check the expected preference revision before updating or deleting. A concurrent edit produces a conflict and asks the user to retry against current data. Never save speculative reasons or inferred preferences.
-4. **Report.** Use a workflow mutation step to save a deterministic assistant message through Agent. Include the saved/deleted target or a specific failure, plus research links when relevant. A language-model summary is unnecessary for confirming a write.
+Every entry point derives the user from authentication and verifies the thread and originating prompt. Internal research steps receive trusted identity and recheck ownership before writing. Model inputs cannot select a user.
 
-Workflow owns execution state and retries; Agent stores tool calls, workflow references, and conversation results. Use those component records to reconnect a saved request to its workflow and display its outcome. Do not add a separate application operations table initially. Configure limited backoff for transient Exa/model failures; do not retry invalid input, ambiguous results, or ownership failures.
+For direct writes, `preferences.apply` calls shared mutation logic and atomically saves the result and confirmation ID on the originating Agent prompt. Repeated calls return that result; generation retries detect it and finish without invoking the model. A retried old save therefore cannot restore a preference the user subsequently deleted. Expected revisions reject stale updates and deletes.
 
-**Implementation check:** verify how the installed components handle duplicate workflow starts, replayed completion steps, and retries of an entire chat generation. Resuming a workflow and regenerating a tool call are different cases. Reuse a recorded workflow/result when available; do not blindly rerun a write whose outcome is uncertain. A unique user/target preference prevents duplicate records, but cannot prevent an old retried create from restoring a deleted preference. Expected revisions protect updates and deletes, not that create case. If component records cannot close a demonstrated retry gap, document it and add only the minimal bookkeeping needed.
+For research, starting Workflow and saving its reference on the Agent prompt also share one transaction. Workflow journals its steps. Its completion callback atomically saves a single Agent reply and confirmation ID. Both paths enforce one preference change or research request per saved prompt and reject crossing into another path after work has started. There is no application operations table.
 
-## Chat integration and implementation order
+## Research
 
-1. Install `@exalabs/convex-exa` and `@convex-dev/workflow` with pnpm, register them in `convex/convex.config.ts`, regenerate bindings, and document backend-only `EXA_API_KEY` setup. Verify compatibility with the installed Agent and AI SDK versions.
-2. Add schema and internal preference functions in `convex/preferences.ts`; implement workflow steps in `convex/preferenceWorkflows.ts`, and Exa access in `convex/lib/musicResearch.ts`.
-3. Wire the tools into the agent and replace its current “research/saving unavailable” instructions. Configure a bounded multi-step tool loop so Agent can consume tool results and acknowledge pending operations.
-4. Expose workflow status through an ownership-checked query using workflow references persisted with Agent tool results, and add a small pending/error indicator in Chat. Verify that the reference belongs to the signed-in user’s thread before querying status. The current message adapter renders only text: keep tool payloads private and use persisted text replies for outcomes. Stop continues to stop the chat response; label the indicator to explain that an already-started save or research operation continues.
+Use `@exalabs/convex-exa` 0.1.1 for a bounded search with text from at most five pages, then interpret the result through the existing Convex gateway model. Check supporting quotations, source URLs, and target names before accepting a researched identity. Missing or ambiguous evidence produces a clarification without a write. Source content is evidence, never instructions.
 
-## Verification
+`@convex-dev/workflow` 0.4.6 coordinates research and the final mutation. Retry transient Exa failures with limited backoff; do not retry invalid input or permanent configuration failures. A failed model step produces a recoverable research failure. Zod 3.25.76 satisfies Exa and AI SDK 7 compatibility.
 
-Test user isolation, malformed targets, duplicate starts/completions, create/update/delete semantics, stale revisions, research ambiguity, and workflow recovery after transient failures. Specifically test whole-generation retries after a successful write, after a later edit or deletion, and after a lost response. Verify that they produce neither a second preference change nor a second completion message; resolve any component integration gaps before enabling automatic write retries.
+## Files and verification
 
-Run `pnpm test`, `pnpm lint`, `pnpm format:check`, and `pnpm build`. With real gateway and Exa access, exercise direct saving, researched saving with citations, listing, correction, deletion, and reload during research. The README currently records gateway access as blocked by the development team’s plan; live model verification depends on resolving that prerequisite.
+- `convex/preferences.ts`: direct tool mutation, authorized reads, and shared preference write logic.
+- `convex/lib/preferenceTools.ts`: Agent tool definitions and stop condition after direct confirmations.
+- `convex/preferenceWorkflows.ts`: research startup, durable steps, completion, and status.
+- `convex/lib/musicResearch.ts`: Exa access and evidence interpretation.
+- `src/pages/ChatPage.tsx`: background research status.
 
-## Implementation notes
+Run `pnpm test`, `pnpm lint`, `pnpm format:check`, and `pnpm build`. Tests exercise direct CRUD without registering Workflow, the Agent tool loop without a follow-up model call, ownership, stale revisions, duplicate requests/completions, retries after deletion, and research failures/evidence.
 
-The implementation uses `@convex-dev/workflow` 0.4.6, `@exalabs/convex-exa` 0.1.1, and Zod 3.25.76 (compatible with Exa and AI SDK 7). It adds no operations table.
-
-Starting a workflow and storing its reference on the saved Agent prompt happen in one Convex mutation. This closes the gap before Agent persists a tool result. Generation retries check that reference before invoking the model; repeated tool calls also reuse it. Workflow journals preference mutations, and its completion callback writes an Agent reply and records the reply ID on the prompt atomically. The status query reads these trusted references after verifying thread ownership.
-
-Research currently uses one Exa search with page text from at most five results, followed by a gateway model call. Exact source quotations and target names are checked before accepting a researched target. Missing or ambiguous evidence produces a clarification without a write. It does not perform an exhaustive crawl or guarantee that an inaccessible tracklist can be resolved. Music identities initially use normalized names plus artist/version context rather than external catalog IDs.
-
-Automated coverage includes the real Agent tool loop with a test model, workflow completion, sourced research with test responses, ownership, transient and permanent research failures, stale revisions, duplicate starts/completions, and retries after deletion. All 23 automated tests, lint, formatting, TypeScript checks, and the production build pass. Convex functions were synced successfully to the development deployment. On September 9, 2026, the development deployment had no `EXA_API_KEY`; live Exa verification remains blocked on that setting. Real model verification also requires the gateway access described in the README.
+Configure backend-only `EXA_API_KEY` and gateway access for live research verification. The original implementation was synced to development; live Exa/model round trips remain unverified because service access was unavailable. See the README for setup and smoke-test prompts.

@@ -1,4 +1,4 @@
-import { v, type Infer } from 'convex/values';
+import { ConvexError, v, type Infer } from 'convex/values';
 import { z } from 'zod';
 
 export const targetSchema = z.object({
@@ -63,4 +63,32 @@ export function validateTarget(target: MusicTarget) {
     throw new Error('A track needs an artist.');
   if (target.kind === 'artist' && (target.artists.length || target.version))
     throw new Error('Artist targets cannot have track fields.');
+}
+
+export function validatePreferenceRequest(
+  request: PreferenceRequest,
+  promptText?: string,
+) {
+  if (
+    request.kind === 'search' &&
+    (!request.query.trim() || request.query.length > 1000)
+  )
+    throw new ConvexError('INVALID_RESEARCH_QUERY');
+  if (request.kind === 'create') {
+    if (request.target) validateTarget(request.target);
+    if (!request.target && !request.researchQuery?.trim())
+      throw new ConvexError('TARGET_REQUIRED');
+    if ((request.researchQuery?.length ?? 0) > 1000)
+      throw new ConvexError('INVALID_RESEARCH_QUERY');
+  }
+  if ('reason' in request && request.reason != null) {
+    if (request.reason.length > 1000 || !promptText?.includes(request.reason))
+      throw new ConvexError('REASON_MUST_QUOTE_USER');
+  }
+  if (
+    'expectedRevision' in request &&
+    (!Number.isSafeInteger(request.expectedRevision) ||
+      request.expectedRevision < 1)
+  )
+    throw new ConvexError('INVALID_REVISION');
 }

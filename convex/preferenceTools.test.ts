@@ -1,6 +1,5 @@
 import { convexTest } from 'convex-test';
 import agentTest from '@convex-dev/agent/test';
-import { registerWorkflow } from '../test-support/workflow';
 import { it, expect, vi } from 'vitest';
 import schema from './schema';
 import { api } from './_generated/api';
@@ -36,7 +35,7 @@ vi.mock('@convex-dev/ai-sdk-provider', async () => {
           [
             {
               type: 'text',
-              text: 'Saving your preference. The result will appear here.',
+              text: 'Unexpected second model call',
             },
           ],
         ],
@@ -45,10 +44,9 @@ vi.mock('@convex-dev/ai-sdk-provider', async () => {
       }),
   };
 });
-it('runs an Agent tool through streaming and resumes with its result', async () => {
+it('saves through an Agent tool without Workflow or a follow-up model call', async () => {
   const t = convexTest(schema, import.meta.glob('./**/*.ts'));
   agentTest.register(t);
-  registerWorkflow(t);
   const userId = await t.run((ctx) =>
     ctx.db.insert('users', { name: 'Alice' }),
   );
@@ -57,15 +55,6 @@ it('runs an Agent tool through streaming and resumes with its result', async () 
     prompt: 'I like Noah Kahan',
   });
   await a.action(api.chat.generate, saved);
-  for (let i = 0; i < 100; i++) {
-    const status = await a.query(api.preferenceWorkflows.statuses, {
-      threadId: saved.threadId,
-      promptMessageIds: [saved.promptMessageId],
-    });
-    if (status[0].status === 'completed') break;
-    await new Promise((resolve) => setTimeout(resolve, 25));
-  }
-  await t.finishInProgressScheduledFunctions();
   const page = await a.query(api.preferences.list, {
     paginationOpts: { cursor: null, numItems: 30 },
   });
@@ -86,4 +75,18 @@ it('runs an Agent tool through streaming and resumes with its result', async () 
       ),
     ),
   ).toBe(true);
+  expect(
+    messages.page.some((m) =>
+      m.parts.some(
+        (p) =>
+          p.type === 'text' && p.text.includes('Unexpected second model call'),
+      ),
+    ),
+  ).toBe(false);
+  await a.action(api.chat.generate, saved);
+  const retried = await a.query(api.chat.listMessages, {
+    threadId: saved.threadId,
+    paginationOpts: { cursor: null, numItems: 30 },
+  });
+  expect(retried.page).toEqual(messages.page);
 });

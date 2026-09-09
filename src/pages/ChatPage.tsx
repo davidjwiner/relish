@@ -218,8 +218,8 @@ function Conversation({ initialThreadId }: { initialThreadId?: string }) {
             className="border-b border-line px-5 py-3 text-sm text-muted sm:px-8"
           >
             {backgroundPending
-              ? 'Research or a preference change is in progress. It continues if you leave this chat or stop the response.'
-              : 'A background request did not finish. Check its reply below; you can ask to list saved preferences before trying again.'}
+              ? 'Research is in progress. It continues if you leave this chat or stop the response.'
+              : 'A research request did not finish. Check its reply below; you can ask to list saved preferences before trying again.'}
           </p>
         )}
         {loading && (

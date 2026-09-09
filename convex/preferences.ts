@@ -1,5 +1,7 @@
 import { paginationOptsValidator } from 'convex/server';
-import { v } from 'convex/values';
+import { ConvexError, v } from 'convex/values';
+import { saveMessage } from '@convex-dev/agent';
+import { components, internal } from './_generated/api';
 import {
   internalMutation,
   query,
@@ -14,6 +16,7 @@ import {
   requestValidator,
   researchValidator,
   validateTarget,
+  validatePreferenceRequest,
 } from './lib/preferenceTypes';
 
 async function describe(
@@ -78,7 +81,55 @@ async function artist(ctx: MutationCtx, name: string, sourceUrl?: string) {
   );
 }
 
-// Called only as a Workflow mutation step: the component journals its result.
+// A normal tool mutation. The write, receipt, and retry result commit together.
+export const apply = internalMutation({
+  args: {
+    threadId: v.string(),
+    promptMessageId: v.string(),
+    request: requestValidator,
+  },
+  handler: async (ctx, args): Promise<string> => {
+    const userId = await currentUser(ctx);
+    const owner = {
+      userId,
+      threadId: args.threadId,
+      promptMessageId: args.promptMessageId,
+    };
+    const prompt = await requirePrompt(ctx, owner);
+    const cached = prompt.providerOptions?.relish?.preferenceResult;
+    if (typeof cached === 'string') return cached;
+    if (prompt.providerOptions?.relish?.workflowId)
+      throw new ConvexError('RESEARCH_ALREADY_STARTED');
+    validatePreferenceRequest(args.request, prompt.text);
+    if (
+      args.request.kind === 'search' ||
+      (args.request.kind === 'create' && !args.request.target)
+    )
+      throw new ConvexError('RESEARCH_REQUIRED');
+    const result = await ctx.runMutation(internal.preferences.commit, {
+      ...owner,
+      request: args.request,
+      research: null,
+    });
+    const { messageId } = await saveMessage(ctx, components.agent, {
+      threadId: args.threadId,
+      promptMessageId: args.promptMessageId,
+      message: { role: 'assistant', content: result },
+    });
+    await ctx.runMutation(components.agent.messages.updateMessage, {
+      messageId: prompt._id,
+      patch: {
+        providerOptions: {
+          ...prompt.providerOptions,
+          relish: { preferenceResult: result, completionMessageId: messageId },
+        },
+      },
+    });
+    return result;
+  },
+});
+
+// Shared write logic, called transactionally by a tool or as a research workflow step.
 export const commit = internalMutation({
   args: {
     ...ownerArgs,
