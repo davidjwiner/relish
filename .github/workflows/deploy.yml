@@ -1,0 +1,48 @@
+name: Deploy production
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: convex-production
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    environment:
+      name: production
+      url: https://graceful-monitor-911.convex.site
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
+        with:
+          node-version: '22.22.2'
+      - uses: pnpm/action-setup@v6
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm lint
+      - run: pnpm test
+      - run: pnpm build
+        env:
+          VITE_CONVEX_URL: https://graceful-monitor-911.convex.cloud
+      - name: Deploy backend and frontend
+        env:
+          CONVEX_DEPLOY_KEY: ${{ secrets.CONVEX_DEPLOY_KEY }}
+        run: |
+          if [ -z "$CONVEX_DEPLOY_KEY" ]; then
+            echo 'Add the production CONVEX_DEPLOY_KEY secret in GitHub Actions settings.'
+            exit 1
+          fi
+          pnpm deploy
+      - name: Check production routes
+        run: |
+          curl --fail --retry 3 https://graceful-monitor-911.convex.site/ -o /dev/null
+          curl --fail --retry 3 https://graceful-monitor-911.convex.site/chat -o /dev/null
+          curl --fail --retry 3 https://graceful-monitor-911.convex.site/.well-known/openid-configuration -o /dev/null
