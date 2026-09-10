@@ -5,8 +5,8 @@ import { components } from '../_generated/api';
 
 const exa = new ExaClient(components.exa);
 
-// Like Rocco, execute tools inside the Agent loop and return their results
-// directly to the model so it can answer in the same streamed response.
+// Execute tools inside the Agent loop and return their results directly to the
+// model so it can answer in the same streamed response.
 export const musicTools = {
   webSearch: createTool({
     description:

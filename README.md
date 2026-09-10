@@ -37,7 +37,7 @@ Chat exposes a single Exa web search tool, executed directly within the Agent re
 
 Chat does not save, update, or delete preferences in the response path. Likes and dislikes receive normal replies while a silent background workflow extracts explicit artist and track preferences later. The recurring dispatcher is disabled unless `PREFERENCE_EXTRACTION_ENABLED=true` is set in the Convex backend; run the paginated `preferenceWorkflows:backfillPage` operation before enabling it. See the [background extraction design](./conversation-preference-extraction.md).
 
-Music research runs inline with the chat response, using the same tool execution pattern as rocco. The agent can search and continue answering for up to five steps. Search failures are returned to the agent so it can explain that verification is unavailable.
+Music research runs inline with the chat response. The agent can search and continue answering for up to five steps. Search failures are returned to the agent so it can explain that verification is unavailable.
 
 Smoke-test “I like Noah Kahan” and verify a normal reply without a save confirmation or preference write. Ask to research a track and verify that Exa results lead to a sourced answer in the same response. Research must never save a preference. See [Step 3](./step-3-preference-tools.md) for scope and implementation notes.
 
