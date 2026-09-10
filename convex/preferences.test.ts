@@ -75,6 +75,99 @@ afterEach(() => {
   vi.clearAllMocks();
 });
 describe('Read-only preferences and music research', () => {
+  it('paginates profile preferences and filters them by reaction and target type', async () => {
+    const { a, alice, t } = await setup(false);
+    await expect(
+      t.query(api.preferences.listProfile, {
+        paginationOpts: { cursor: null, numItems: 30 },
+      }),
+    ).rejects.toThrow('UNAUTHENTICATED');
+    await t.run(async (ctx) => {
+      const [likedArtist, dislikedArtist] = await Promise.all([
+        ctx.db.insert('artists', {
+          name: 'Nora En Pure',
+          identityKey: 'nora en pure',
+        }),
+        ctx.db.insert('artists', {
+          name: 'Noah Kahan',
+          identityKey: 'noah kahan',
+        }),
+      ]);
+      const track = await ctx.db.insert('tracks', {
+        title: 'Stick Season',
+        artistIds: [dislikedArtist],
+        version: 'Acoustic',
+        identityKey: 'stick season:noah kahan:acoustic',
+      });
+      await ctx.db.insert('preferences', {
+        userId: alice,
+        target: { kind: 'artist', artistId: likedArtist },
+        targetKey: `artist:${likedArtist}`,
+        reaction: 'like',
+        reason: 'The melodies keep me moving.',
+        originatingMessageId: 'one',
+        createdAt: 1,
+        updatedAt: 1,
+        revision: 1,
+      });
+      await ctx.db.insert('preferences', {
+        userId: alice,
+        target: { kind: 'artist', artistId: dislikedArtist },
+        targetKey: `artist:${dislikedArtist}`,
+        reaction: 'dislike',
+        originatingMessageId: 'two',
+        createdAt: 2,
+        updatedAt: 2,
+        revision: 1,
+      });
+      await ctx.db.insert('preferences', {
+        userId: alice,
+        target: { kind: 'track', trackId: track },
+        targetKey: `track:${track}`,
+        reaction: 'like',
+        originatingMessageId: 'three',
+        createdAt: 3,
+        updatedAt: 3,
+        revision: 1,
+      });
+    });
+    const firstPage = await a.query(api.preferences.listProfile, {
+      paginationOpts: { cursor: null, numItems: 1 },
+    });
+    expect(firstPage.page).toHaveLength(1);
+    const nextPage = await a.query(api.preferences.listProfile, {
+      paginationOpts: { cursor: firstPage.continueCursor, numItems: 30 },
+    });
+    expect([...firstPage.page, ...nextPage.page]).toHaveLength(3);
+    expect(
+      (
+        await a.query(api.preferences.listProfile, {
+          paginationOpts: { cursor: null, numItems: 30 },
+          reaction: 'like',
+          targetKind: 'track',
+        })
+      ).page,
+    ).toMatchObject([
+      {
+        kind: 'track',
+        title: 'Stick Season',
+        version: 'Acoustic',
+        artistNames: ['Noah Kahan'],
+        reaction: 'like',
+      },
+    ]);
+    expect(
+      (
+        await a.query(api.preferences.listProfile, {
+          paginationOpts: { cursor: null, numItems: 30 },
+          targetKind: 'artist',
+        })
+      ).page
+        .map((preference) => preference.title)
+        .sort(),
+    ).toEqual(['Noah Kahan', 'Nora En Pure']);
+  });
+
   it('authenticates preference reads and isolates users', async () => {
     const { t, b, alice, list } = await setup(false);
     await expect(
@@ -106,6 +199,36 @@ describe('Read-only preferences and music research', () => {
         })
       ).page,
     ).toEqual([]);
+  });
+  it('removes only the current user’s preference', async () => {
+    const { a, b, alice, t } = await setup(false);
+    const preferenceId = await t.run(async (ctx) => {
+      const artistId = await ctx.db.insert('artists', {
+        name: 'Nora En Pure',
+        identityKey: 'nora en pure',
+      });
+      return ctx.db.insert('preferences', {
+        userId: alice,
+        target: { kind: 'artist', artistId },
+        targetKey: `artist:${artistId}`,
+        reaction: 'like',
+        originatingMessageId: 'existing',
+        createdAt: 1,
+        updatedAt: 1,
+        revision: 1,
+      });
+    });
+    await expect(
+      t.mutation(api.preferences.remove, { preferenceId }),
+    ).rejects.toThrow('UNAUTHENTICATED');
+    await expect(
+      b.mutation(api.preferences.remove, { preferenceId }),
+    ).rejects.toThrow('PREFERENCE_UNAVAILABLE');
+    await a.mutation(api.preferences.remove, { preferenceId });
+    await expect(
+      a.mutation(api.preferences.remove, { preferenceId }),
+    ).rejects.toThrow('PREFERENCE_UNAVAILABLE');
+    expect(await t.run((ctx) => ctx.db.get(preferenceId))).toBeNull();
   });
   it('rejects research on another user’s conversation and mismatched prompts', async () => {
     const { a, b, saved } = await setup();

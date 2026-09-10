@@ -33,5 +33,12 @@ export default defineSchema({
     revision: v.number(),
   })
     .index('by_user', ['userId'])
-    .index('by_user_target', ['userId', 'targetKey']),
+    .index('by_user_target', ['userId', 'targetKey'])
+    .index('by_user_reaction', ['userId', 'reaction'])
+    .index('by_user_target_kind', ['userId', 'target.kind'])
+    .index('by_user_reaction_target_kind', [
+      'userId',
+      'reaction',
+      'target.kind',
+    ]),
 });
