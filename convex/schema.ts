@@ -56,5 +56,6 @@ export default defineSchema({
     lastErrorCode: v.optional(v.string()),
   })
     .index('by_thread', ['threadId'])
+    .index('by_user', ['userId'])
     .index('by_next_review', ['nextReviewAt']),
 });
