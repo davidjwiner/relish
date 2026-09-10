@@ -1,4 +1,5 @@
 # Relish
+
 A music-taste app built with React and Convex. See [design.md](./design.md) for the product plan.
 
 ## Development
@@ -32,7 +33,13 @@ Run `pnpm dev:backend` to install/sync the Agent component and regenerate bindin
 
 Once gateway access is enabled, open Chat, send a prompt, verify a streamed reply and a contextual follow-up, reload the conversation URL, then test stopping a response. The Retry response button reuses the saved prompt. Threads are private to the signed-in user. Drafts stay in memory while navigating and are cleared on reload/logout.
 
-Web research, saved taste preferences, and show lookup arrive in later steps. See [Step 2](./step-2-chat-interface.md) for the design and verification status.
+Chat has Exa web research and a read-only tool for existing saved artist/track preferences. Set `EXA_API_KEY` in the Convex dashboard, then run `pnpm dev:backend` to sync the Exa and Workflow components. Exa credentials remain backend-only; research interpretation also requires gateway access.
+
+Chat does not save, update, or delete preferences. Likes and dislikes receive normal replies without preference-saving tools or extraction jobs. Offline extraction is deferred to the next PR; see the [background extraction design](./conversation-preference-extraction.md).
+
+Explicit music research uses background workflows whose sourced final replies survive reloads, without a progress banner. Stop only stops the chat response; an already-started research workflow continues. Each saved user message can start one research request, and retries reuse that workflow.
+
+Smoke-test “I like Noah Kahan” and verify a normal reply without a save confirmation or preference write. Ask to research a track, reload during research, and verify the sourced completion. Research must never save a preference. See [Step 3](./step-3-preference-tools.md) for scope and implementation notes.
 
 ## Production deployments
 

@@ -30,12 +30,15 @@
     "@convex-dev/ai-sdk-provider": "^0.1.0",
     "@convex-dev/auth": "0.0.95",
     "@convex-dev/static-hosting": "0.2.1",
+    "@convex-dev/workflow": "^0.4.6",
+    "@exalabs/convex-exa": "^0.1.1",
     "ai": "^7.0.93",
     "convex": "1.45.0",
     "lucide-react": "^1.43.0",
     "react": "^19.2.8",
     "react-dom": "^19.2.8",
-    "react-router-dom": "^7.18.3"
+    "react-router-dom": "^7.18.3",
+    "zod": "^3.25.76"
   },
   "devDependencies": {
     "@edge-runtime/vm": "^5.0.0",

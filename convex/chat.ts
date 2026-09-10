@@ -20,6 +20,9 @@ import {
 } from './_generated/server';
 import type { Id } from './_generated/dataModel';
 import { musicAgent } from './lib/musicAgent';
+import { preferenceTools } from './lib/preferenceTools';
+import { workflowReference } from './preferenceWorkflows';
+import { stepCountIs } from 'ai';
 
 async function currentUser(ctx: QueryCtx | MutationCtx) {
   const userId = await getAuthUserId(ctx);
@@ -154,6 +157,8 @@ export const generate = action({
       prompt.message?.role !== 'user'
     )
       throw new ConvexError('INVALID_MESSAGE');
+    // Reuse a research workflow already started for this prompt.
+    if (workflowReference(prompt)) return;
     try {
       await getServiceToken('ai-gateway');
     } catch {
@@ -167,6 +172,8 @@ export const generate = action({
         { threadId: args.threadId },
         {
           promptMessageId: args.promptMessageId,
+          tools: preferenceTools(ctx, args),
+          stopWhen: stepCountIs(5),
           abortSignal: controller.signal,
           maxOutputTokens: 8192,
           maxRetries: 0,
