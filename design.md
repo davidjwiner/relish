@@ -60,5 +60,5 @@ Keep show interest separate from music taste. Dismissing a show because it is on
 1. Set up app scaffold with Convex Auth (allowing user to login and log out)
 2. Create chat interface using the Convex Agent component and assistant-ui, with model calls routed through the Convex LLM gateway.
 3. Add tools to the agent that allow it to search the web (using the Exa component) and create, read, update, and delete user preferences from the conversation. Use the Convex Workflow component to coordinate multi-step research and preference-update flows.
-4. Add user preferences view that lets the user view their saved preferences for artists or tracks
+4. Add user preferences view that lets the user view their saved preferences for artists or tracks. See [Taste Profile design and implementation plan](./step-4-taste-profile.md).
 5. Finally, add Radar (lets user view recommendations)
