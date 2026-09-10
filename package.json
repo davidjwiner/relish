@@ -17,6 +17,7 @@
     "lint": "eslint .",
     "test": "vitest run",
     "build": "pnpm typecheck && vite build",
+    "deploy": "static-hosting deploy --build-command 'pnpm build'",
     "preview": "vite preview --host localhost",
     "format": "prettier --write .",
     "format:check": "prettier --check ."
@@ -28,6 +29,7 @@
     "@convex-dev/agent": "^0.7.2",
     "@convex-dev/ai-sdk-provider": "^0.1.0",
     "@convex-dev/auth": "0.0.95",
+    "@convex-dev/static-hosting": "0.2.1",
     "@convex-dev/workflow": "^0.4.6",
     "@exalabs/convex-exa": "^0.1.1",
     "ai": "^7.0.93",

@@ -26,6 +26,9 @@ importers:
       '@convex-dev/auth':
         specifier: 0.0.95
         version: 0.0.95(@auth/core@0.41.1)(convex@1.45.0(react@19.2.8))(react@19.2.8)
+      '@convex-dev/static-hosting':
+        specifier: 0.2.1
+        version: 0.2.1(convex@1.45.0(react@19.2.8))(react@19.2.8)
       '@convex-dev/workflow':
         specifier: ^0.4.6
         version: 0.4.6(@convex-dev/workpool@0.4.11(convex-helpers@0.1.124(@standard-schema/spec@1.1.0)(convex@1.45.0(react@19.2.8))(react@19.2.8)(typescript@5.9.3)(zod@3.25.76))(convex@1.45.0(react@19.2.8))(react@19.2.8))(convex-helpers@0.1.124(@standard-schema/spec@1.1.0)(convex@1.45.0(react@19.2.8))(react@19.2.8)(typescript@5.9.3)(zod@3.25.76))(convex@1.45.0(react@19.2.8))
@@ -340,6 +343,13 @@ packages:
     peerDependencies:
       convex: ^1.36.1
       convex-helpers: ^0.1.94
+
+  '@convex-dev/static-hosting@0.2.1':
+    resolution: {integrity: sha512-QMcfKUOB8dHeLa81xzk2GEIn7LzhEvtdgYhfFpIFer6uE/+xMStDxHAZsX5h1qsttYi7wNbEKAMf7MfOQ7ZrMw==}
+    hasBin: true
+    peerDependencies:
+      convex: ^1.37.0
+      react: ^18.3.1 || ^19.0.0
 
   '@edge-runtime/primitives@6.0.0':
     resolution: {integrity: sha512-FqoxaBT+prPBHBwE1WXS1ocnu/VLTQyZ6NMUBAdbP7N2hsFTTxMC/jMu2D/8GAlMQfxeuppcPuCUk/HO3fpIvA==}
@@ -3208,6 +3218,11 @@ snapshots:
       react: 19.2.8
 
   '@convex-dev/batch-worker@0.2.2(convex@1.45.0(react@19.2.8))(react@19.2.8)':
+    dependencies:
+      convex: 1.45.0(react@19.2.8)
+      react: 19.2.8
+
+  '@convex-dev/static-hosting@0.2.1(convex@1.45.0(react@19.2.8))(react@19.2.8)':
     dependencies:
       convex: 1.45.0(react@19.2.8)
       react: 19.2.8

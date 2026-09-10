@@ -70,4 +70,5 @@ export declare const components: {
   agent: import("@convex-dev/agent/_generated/component.js").ComponentApi<"agent">;
   workflow: import("@convex-dev/workflow/_generated/component.js").ComponentApi<"workflow">;
   exa: import("@exalabs/convex-exa/_generated/component.js").ComponentApi<"exa">;
+  staticHosting: import("@convex-dev/static-hosting/_generated/component.js").ComponentApi<"staticHosting">;
 };

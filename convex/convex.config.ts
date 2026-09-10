@@ -3,9 +3,11 @@ import agent from '@convex-dev/agent/convex.config';
 import workflow from '@convex-dev/workflow/convex.config';
 import exa from '@exalabs/convex-exa/convex.config';
 import { v } from 'convex/values';
+import staticHosting from '@convex-dev/static-hosting/convex.config';
 
 const app = defineApp({ env: { EXA_API_KEY: v.string() } });
 app.use(agent);
 app.use(workflow);
 app.use(exa, { env: { EXA_API_KEY: app.env.EXA_API_KEY } });
+app.use(staticHosting);
 export default app;
