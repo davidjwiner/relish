@@ -20,7 +20,7 @@ import {
 } from './_generated/server';
 import type { Id } from './_generated/dataModel';
 import { musicAgent } from './lib/musicAgent';
-import { preferenceTools, hasPreferenceReceipt } from './lib/preferenceTools';
+import { preferenceTools } from './lib/preferenceTools';
 import { workflowReference } from './preferenceWorkflows';
 import { stepCountIs } from 'ai';
 
@@ -157,13 +157,8 @@ export const generate = action({
       prompt.message?.role !== 'user'
     )
       throw new ConvexError('INVALID_MESSAGE');
-    // A prior tool may have committed a preference or research start before generation failed.
-    // Never regenerate side effects for that saved prompt.
-    if (
-      workflowReference(prompt) ||
-      typeof prompt.providerOptions?.relish?.preferenceResult === 'string'
-    )
-      return;
+    // Reuse a research workflow already started for this prompt.
+    if (workflowReference(prompt)) return;
     try {
       await getServiceToken('ai-gateway');
     } catch {
@@ -178,11 +173,7 @@ export const generate = action({
         {
           promptMessageId: args.promptMessageId,
           tools: preferenceTools(ctx, args),
-          stopWhen: [
-            stepCountIs(5),
-            ({ steps }) =>
-              hasPreferenceReceipt(steps.at(-1)?.toolResults ?? []),
-          ],
+          stopWhen: stepCountIs(5),
           abortSignal: controller.signal,
           maxOutputTokens: 8192,
           maxRetries: 0,
@@ -192,8 +183,7 @@ export const generate = action({
       );
       if (
         ['error', 'length'].includes(await result.finishReason) ||
-        (!(await result.text).trim() &&
-          !hasPreferenceReceipt(await result.toolResults))
+        !(await result.text).trim()
       )
         throw new Error('Incomplete response');
     } catch {

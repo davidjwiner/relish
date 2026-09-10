@@ -11,12 +11,7 @@ import { ConvexError, v } from 'convex/values';
 import { components, internal } from './_generated/api';
 import { internalMutation, query } from './_generated/server';
 import { currentUser, requirePrompt } from './lib/preferenceAuth';
-import {
-  ownerArgs,
-  requestValidator,
-  validatePreferenceRequest,
-  type ResearchResult,
-} from './lib/preferenceTypes';
+import { ownerArgs, requestValidator } from './lib/preferenceTypes';
 
 const workflow = new WorkflowManager(components.workflow);
 export function workflowReference(prompt: Pick<MessageDoc, 'providerOptions'>) {
@@ -48,14 +43,8 @@ export const begin = internalMutation({
           'This message already started a workflow. Its result will appear in this conversation; use a new message for another request.',
       };
     const request = args.request;
-    validatePreferenceRequest(request, prompt.text);
-    if (
-      request.kind !== 'search' &&
-      !(request.kind === 'create' && !request.target)
-    )
-      throw new ConvexError('RESEARCH_NOT_REQUIRED');
-    if (prompt.providerOptions?.relish?.preferenceResult)
-      throw new ConvexError('PREFERENCE_ALREADY_HANDLED');
+    if (!request.query.trim() || request.query.length > 1000)
+      throw new ConvexError('INVALID_RESEARCH_QUERY');
     const workflowId = await start(
       ctx,
       internal.preferenceWorkflows.run,
@@ -85,46 +74,25 @@ export const run = workflow
     returns: v.string(),
   })
   .handler(async (step, args): Promise<string> => {
-    let research: ResearchResult | null = null;
-    const request = args.request;
-    const query =
-      request.kind === 'search'
-        ? request.query
-        : request.kind === 'create' && !request.target
-          ? request.researchQuery
-          : null;
-    if (query) {
-      const found = await step.runAction(
-        internal.lib.musicResearch.search,
-        { query, asOf: args.asOf },
-        { retry: { maxAttempts: 3, initialBackoffMs: 1000, base: 2 } },
-      );
-      if (found.error) return found.error;
-      research = await step.runAction(
-        internal.lib.musicResearch.interpret,
-        {
-          query,
-          resolveTarget: request.kind === 'create',
-          asOf: args.asOf,
-          sources: found.sources,
-        },
-        { retry: false },
-      );
-    }
-    const outcome = await step.runMutation(internal.preferences.commit, {
-      userId: args.userId,
-      threadId: args.threadId,
-      promptMessageId: args.promptMessageId,
-      request,
-      research,
-    });
-    const sources = research?.sourceUrls
+    const query = args.request.query;
+    const found = await step.runAction(
+      internal.lib.musicResearch.search,
+      { query, asOf: args.asOf },
+      { retry: { maxAttempts: 3, initialBackoffMs: 1000, base: 2 } },
+    );
+    if (found.error) return found.error;
+    const research = await step.runAction(
+      internal.lib.musicResearch.interpret,
+      { query, asOf: args.asOf, sources: found.sources },
+      { retry: false },
+    );
+    const sources = research.sourceUrls
       .map(
         (url, i) =>
           `[Source ${i + 1}](${url.replaceAll('(', '%28').replaceAll(')', '%29')})`,
       )
       .join(' · ');
-    return outcome + (sources ? `\n\n${sources}` : '');
+    return research.answer + (sources ? `\n\n${sources}` : '');
   });
 export const complete = internalMutation({
   args: {
@@ -155,7 +123,7 @@ export const complete = internalMutation({
       args.result.kind === 'success' &&
       typeof args.result.returnValue === 'string'
         ? args.result.returnValue
-        : 'The research or preference request did not finish. Ask me to list your saved preferences before trying the change again.';
+        : 'The research did not finish. Please try again in a new message.';
     const { messageId } = await saveMessage(ctx, components.agent, {
       threadId: args.context.threadId,
       promptMessageId: args.context.promptMessageId,

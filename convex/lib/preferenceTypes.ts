@@ -1,43 +1,9 @@
-import { ConvexError, v, type Infer } from 'convex/values';
-import { z } from 'zod';
+import { v } from 'convex/values';
 
-export const targetSchema = z.object({
-  kind: z.enum(['artist', 'track']),
-  name: z.string().trim().min(1).max(200),
-  artists: z.array(z.string().trim().min(1).max(200)).max(10),
-  version: z.string().trim().max(200).nullable(),
+export const requestValidator = v.object({
+  kind: v.literal('search'),
+  query: v.string(),
 });
-export const targetValidator = v.object({
-  kind: v.union(v.literal('artist'), v.literal('track')),
-  name: v.string(),
-  artists: v.array(v.string()),
-  version: v.union(v.string(), v.null()),
-});
-export type MusicTarget = Infer<typeof targetValidator>;
-export const reaction = v.union(v.literal('like'), v.literal('dislike'));
-export const requestValidator = v.union(
-  v.object({ kind: v.literal('search'), query: v.string() }),
-  v.object({
-    kind: v.literal('create'),
-    target: v.union(targetValidator, v.null()),
-    researchQuery: v.union(v.string(), v.null()),
-    reaction,
-    reason: v.union(v.string(), v.null()),
-  }),
-  v.object({
-    kind: v.literal('update'),
-    preferenceId: v.id('preferences'),
-    expectedRevision: v.number(),
-    reaction,
-    reason: v.optional(v.union(v.string(), v.null())),
-  }),
-  v.object({
-    kind: v.literal('delete'),
-    preferenceId: v.id('preferences'),
-    expectedRevision: v.number(),
-  }),
-);
-export type PreferenceRequest = Infer<typeof requestValidator>;
 export const ownerArgs = {
   userId: v.id('users'),
   threadId: v.string(),
@@ -49,46 +15,5 @@ export const sourceValidator = v.object({
   text: v.string(),
   retrievedAt: v.number(),
 });
-export const researchValidator = v.object({
-  answer: v.string(),
-  target: v.union(targetValidator, v.null()),
-  sourceUrls: v.array(v.string()),
-});
-export type ResearchResult = Infer<typeof researchValidator>;
-export const normalizeName = (value: string) =>
-  value.normalize('NFKC').trim().replace(/\s+/g, ' ').toLowerCase();
-export function validateTarget(target: MusicTarget) {
-  targetSchema.parse(target);
-  if (target.kind === 'track' && !target.artists.length)
-    throw new Error('A track needs an artist.');
-  if (target.kind === 'artist' && (target.artists.length || target.version))
-    throw new Error('Artist targets cannot have track fields.');
-}
-
-export function validatePreferenceRequest(
-  request: PreferenceRequest,
-  promptText?: string,
-) {
-  if (
-    request.kind === 'search' &&
-    (!request.query.trim() || request.query.length > 1000)
-  )
-    throw new ConvexError('INVALID_RESEARCH_QUERY');
-  if (request.kind === 'create') {
-    if (request.target) validateTarget(request.target);
-    if (!request.target && !request.researchQuery?.trim())
-      throw new ConvexError('TARGET_REQUIRED');
-    if ((request.researchQuery?.length ?? 0) > 1000)
-      throw new ConvexError('INVALID_RESEARCH_QUERY');
-  }
-  if ('reason' in request && request.reason != null) {
-    if (request.reason.length > 1000 || !promptText?.includes(request.reason))
-      throw new ConvexError('REASON_MUST_QUOTE_USER');
-  }
-  if (
-    'expectedRevision' in request &&
-    (!Number.isSafeInteger(request.expectedRevision) ||
-      request.expectedRevision < 1)
-  )
-    throw new ConvexError('INVALID_REVISION');
-}
+export type ResearchResult = { answer: string; sourceUrls: string[] };
+export const reaction = v.union(v.literal('like'), v.literal('dislike'));

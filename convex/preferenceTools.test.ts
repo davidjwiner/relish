@@ -16,26 +16,8 @@ vi.mock('@convex-dev/ai-sdk-provider', async () => {
         contentSteps: [
           [
             {
-              type: 'tool-call',
-              toolCallId: 'save-like',
-              toolName: 'createPreference',
-              input: JSON.stringify({
-                target: {
-                  kind: 'artist',
-                  name: 'Noah Kahan',
-                  artists: [],
-                  version: null,
-                },
-                researchQuery: null,
-                reaction: 'like',
-                reason: null,
-              }),
-            },
-          ],
-          [
-            {
               type: 'text',
-              text: 'Unexpected second model call',
+              text: 'Try these three artists based on that sound.',
             },
           ],
         ],
@@ -44,9 +26,9 @@ vi.mock('@convex-dev/ai-sdk-provider', async () => {
       }),
   };
 });
-it('saves through an Agent tool without Workflow or a follow-up model call', async () => {
+it('answers a preference statement without saving or starting background work', async () => {
   const t = convexTest(schema, import.meta.glob('./**/*.ts'));
-  agentTest.register(t);
+  agentTest.register(t); // No Workflow registration: ordinary chat must not invoke it.
   const userId = await t.run((ctx) =>
     ctx.db.insert('users', { name: 'Alice' }),
   );
@@ -58,12 +40,7 @@ it('saves through an Agent tool without Workflow or a follow-up model call', asy
   const page = await a.query(api.preferences.list, {
     paginationOpts: { cursor: null, numItems: 30 },
   });
-  expect(page.page).toHaveLength(1);
-  expect(page.page[0]).toMatchObject({
-    name: 'Noah Kahan',
-    reaction: 'like',
-    target: { kind: 'artist' },
-  });
+  expect(page.page).toEqual([]);
   const messages = await a.query(api.chat.listMessages, {
     threadId: saved.threadId,
     paginationOpts: { cursor: null, numItems: 30 },
@@ -71,22 +48,17 @@ it('saves through an Agent tool without Workflow or a follow-up model call', asy
   expect(
     messages.page.some((m) =>
       m.parts.some(
-        (p) => p.type === 'text' && p.text.includes('Saved Noah Kahan'),
+        (p) => p.type === 'text' && p.text.includes('Try these three artists'),
       ),
     ),
   ).toBe(true);
-  expect(
-    messages.page.some((m) =>
-      m.parts.some(
-        (p) =>
-          p.type === 'text' && p.text.includes('Unexpected second model call'),
-      ),
-    ),
-  ).toBe(false);
-  await a.action(api.chat.generate, saved);
-  const retried = await a.query(api.chat.listMessages, {
-    threadId: saved.threadId,
-    paginationOpts: { cursor: null, numItems: 30 },
+});
+
+it('exposes only research and read tools with no preference write capability', async () => {
+  const { preferenceTools } = await import('./lib/preferenceTools');
+  const tools = preferenceTools({} as never, {
+    threadId: 'thread',
+    promptMessageId: 'prompt',
   });
-  expect(retried.page).toEqual(messages.page);
+  expect(Object.keys(tools).sort()).toEqual(['listPreferences', 'searchMusic']);
 });
