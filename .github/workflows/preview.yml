@@ -35,14 +35,14 @@ jobs:
       - name: Deploy isolated backend and frontend
         id: deploy
         run: |
-          if [ -z "$CONVEX_DEPLOY_KEY" ]; then
+          if [ -z "$CONVEX_SELF_HOSTED_ADMIN_KEY" ]; then
             echo 'Add a Convex preview deploy key as CONVEX_PREVIEW_DEPLOY_KEY in the GitHub preview environment.'
             exit 1
           fi
 
           pnpm deploy
 
-          deployment_json=$(pnpm exec convex run --component staticHosting lib:getUrls '{}' --prod --typecheck=disable --codegen=disable)
+          deployment_json=$(pnpm exec convex run --component staticHosting lib:getUrls '{}' --typecheck=disable --codegen=disable)
           site_url=$(printf '%s' "$deployment_json" | jq -r '.siteUrl')
           if [ -z "$site_url" ] || [ "$site_url" = null ]; then
             echo 'Could not determine the preview site URL.'
