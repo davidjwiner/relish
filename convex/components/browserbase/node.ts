@@ -2,12 +2,17 @@
 
 import BrowserbaseSDK from '@browserbasehq/sdk';
 import { Stagehand } from '@browserbasehq/stagehand';
+import { v } from 'convex/values';
 import {
   MAX_TEXT,
   OPERATION_TIMEOUT_MS,
+  operationValidator,
+  resultValidator,
+  safeBrowserError,
+  validateOperation,
   type BrowserOperation,
   type BrowserResult,
-} from '../components/browserbase/validation';
+} from './component/validation';
 
 type Config = { apiKey: string; projectId?: string };
 
@@ -153,4 +158,44 @@ export async function executeBrowser(
     // With v3 keepAlive this disconnects CDP, without ending a healthy remote session.
     await deadline(stagehand.close(), 5000).catch(() => {});
   }
+}
+
+export function browserActionDefinition(
+  execute: typeof executeBrowser = executeBrowser,
+) {
+  return {
+    args: {
+      sessionId: v.string(),
+      operation: operationValidator,
+      timeoutMs: v.number(),
+    },
+    returns: resultValidator,
+    handler: async (
+      _ctx: unknown,
+      args: {
+        sessionId: string;
+        operation: BrowserOperation;
+        timeoutMs: number;
+      },
+    ) => {
+      try {
+        const apiKey = process.env.BROWSERBASE_API_KEY;
+        if (!apiKey) throw new Error('BROWSER_NOT_CONFIGURED');
+        if (
+          !args.sessionId ||
+          !Number.isFinite(args.timeoutMs) ||
+          args.timeoutMs <= 0
+        )
+          throw new Error('BROWSER_INVALID_INPUT');
+        return await execute(
+          { apiKey, projectId: process.env.BROWSERBASE_PROJECT_ID },
+          args.sessionId,
+          validateOperation(args.operation),
+          Math.min(args.timeoutMs, OPERATION_TIMEOUT_MS),
+        );
+      } catch (error) {
+        throw new Error(safeBrowserError(error));
+      }
+    },
+  };
 }

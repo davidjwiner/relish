@@ -4,7 +4,7 @@ import type {
   GenericDataModel,
   FunctionReference,
 } from 'convex/server';
-import type { ComponentApi } from '../components/browserbase/_generated/component';
+import type { ComponentApi } from './component/_generated/component';
 import {
   operationSchema,
   validateOperation,
@@ -12,7 +12,7 @@ import {
   OPERATION_TIMEOUT_MS,
   type BrowserOperation,
   type BrowserResult,
-} from '../components/browserbase/validation';
+} from './component/validation';
 
 export type BrowserContext = Pick<
   GenericActionCtx<GenericDataModel>,

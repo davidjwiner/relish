@@ -1,6 +1,6 @@
 // @vitest-environment node
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
-import { executeBrowser } from './lib/browserbaseNode';
+import { executeBrowser } from './components/browserbase/node';
 
 const mocks = vi.hoisted(() => ({
   init: vi.fn(),

@@ -32,7 +32,7 @@ It awaits the response inside `withSession`. The browser starts only if a tool u
 
 ## Implementation boundary
 
-Convex components cannot execute Node actions. The component therefore owns session creation and release over HTTP, while an internal host Node action executes SDK operations. The client hides that boundary:
+Convex components cannot execute Node actions. The deployable component owns session creation and release over HTTP, while the component package supplies the required host Node action definition. The package hides that boundary:
 
 ```ts
 const browser = new Browserbase(
@@ -41,11 +41,13 @@ const browser = new Browserbase(
 );
 ```
 
-- `convex/components/browserbase/`: config, lifecycle actions, shared validators, and an empty schema.
-- `convex/lib/browserbaseClient.ts`: session methods and Agent adapter.
-- `convex/lib/browserbaseNode.ts`: Stagehand connection and operation dispatch.
-- `convex/browserActions.ts`: internal Node action; no frontend browser-control endpoint.
+- `convex/components/browserbase/`: public client, session methods, Agent adapter, Stagehand transport, contracts, and the deployable component.
+- `convex/components/browserbase/component/`: lifecycle actions, shared validators, and an empty schema.
+- `convex/browserActions.ts`: the required one-line internal Node action registration; no frontend browser-control endpoint.
+- `convex/lib/browser.ts`: Relish-specific wiring of generated component references.
 - `convex/chat.ts`: authenticated chat integration and generation lifetime.
+
+Consumers import `Browserbase` from `convex/components/browserbase`. The package exposes `session.tool()` and `browser.tool({ sessionId })`; Relish does not implement either adapter.
 
 Stagehand **3.7.3** is pinned because `keepAlive: true` makes its `close()` disconnect without releasing the remote browser. Final cleanup explicitly releases the Browserbase session. The v4 SDK has a different lifecycle and is not a drop-in replacement. [Stagehand v3 lifecycle documentation](https://docs.stagehand.dev/v3/references/stagehand).
 

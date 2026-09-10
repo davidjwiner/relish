@@ -1,5 +1,5 @@
 import { defineApp } from 'convex/server';
-import browserbase from './components/browserbase/convex.config';
+import browserbase from './components/browserbase/component/convex.config';
 import agent from '@convex-dev/agent/convex.config';
 import workflow from '@convex-dev/workflow/convex.config';
 import exa from '@exalabs/convex-exa/convex.config';

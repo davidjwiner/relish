@@ -4,7 +4,7 @@ import globals from 'globals';
 import hooks from 'eslint-plugin-react-hooks';
 import refresh from 'eslint-plugin-react-refresh';
 export default tseslint.config(
-  { ignores: ['dist', 'convex/**/_generated'] },
+  { ignores: ['dist', '**/_generated'] },
   js.configs.recommended,
   ...tseslint.configs.recommended,
   { languageOptions: { globals: { ...globals.browser, ...globals.node } } },

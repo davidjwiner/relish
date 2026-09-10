@@ -3,15 +3,27 @@ import agentTest from '@convex-dev/agent/test';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { listMessages } from '@convex-dev/agent';
 import schema from './schema';
-import browserSchema from './components/browserbase/schema';
+import browserSchema from './components/browserbase/component/schema';
 import { api, components, internal } from './_generated/api';
-import { Browserbase, type BrowserContext } from './lib/browserbaseClient';
+import {
+  Browserbase,
+  type BrowserContext,
+} from './components/browserbase/client';
 
 const { executeBrowser, calls } = vi.hoisted(() => ({
   executeBrowser: vi.fn(),
   calls: [] as unknown[],
 }));
-vi.mock('./lib/browserbaseNode', () => ({ executeBrowser }));
+vi.mock('./components/browserbase/node', async (importOriginal) => {
+  const original =
+    await importOriginal<typeof import('./components/browserbase/node')>();
+  return {
+    ...original,
+    executeBrowser,
+    browserActionDefinition: () =>
+      original.browserActionDefinition(executeBrowser),
+  };
+});
 vi.mock('convex/server', async (original) => ({
   ...(await original<typeof import('convex/server')>()),
   getServiceToken: vi.fn(async () => 'test-token'),
@@ -82,7 +94,7 @@ async function setup() {
   t.registerComponent(
     'browserbase',
     browserSchema,
-    import.meta.glob('./components/browserbase/**/*.ts'),
+    import.meta.glob('./components/browserbase/component/**/*.ts'),
   );
   const user = await t.run((ctx) => ctx.db.insert('users', { name: 'Alice' }));
   const a = t.withIdentity({ subject: `${user}|session` });

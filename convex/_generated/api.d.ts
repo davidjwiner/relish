@@ -12,11 +12,12 @@ import type * as auth from "../auth.js";
 import type * as browserActions from "../browserActions.js";
 import type * as browserSmoke from "../browserSmoke.js";
 import type * as chat from "../chat.js";
+import type * as components_browserbase_client from "../components/browserbase/client.js";
+import type * as components_browserbase_index from "../components/browserbase/index.js";
+import type * as components_browserbase_node from "../components/browserbase/node.js";
 import type * as crons from "../crons.js";
 import type * as http from "../http.js";
 import type * as lib_browser from "../lib/browser.js";
-import type * as lib_browserbaseClient from "../lib/browserbaseClient.js";
-import type * as lib_browserbaseNode from "../lib/browserbaseNode.js";
 import type * as lib_musicAgent from "../lib/musicAgent.js";
 import type * as lib_preferenceAuth from "../lib/preferenceAuth.js";
 import type * as lib_preferenceExtraction from "../lib/preferenceExtraction.js";
@@ -37,11 +38,12 @@ declare const fullApi: ApiFromModules<{
   browserActions: typeof browserActions;
   browserSmoke: typeof browserSmoke;
   chat: typeof chat;
+  "components/browserbase/client": typeof components_browserbase_client;
+  "components/browserbase/index": typeof components_browserbase_index;
+  "components/browserbase/node": typeof components_browserbase_node;
   crons: typeof crons;
   http: typeof http;
   "lib/browser": typeof lib_browser;
-  "lib/browserbaseClient": typeof lib_browserbaseClient;
-  "lib/browserbaseNode": typeof lib_browserbaseNode;
   "lib/musicAgent": typeof lib_musicAgent;
   "lib/preferenceAuth": typeof lib_preferenceAuth;
   "lib/preferenceExtraction": typeof lib_preferenceExtraction;
@@ -79,7 +81,7 @@ export declare const internal: FilterApi<
 >;
 
 export declare const components: {
-  browserbase: import("../components/browserbase/_generated/component.js").ComponentApi<"browserbase">;
+  browserbase: import("../components/browserbase/component/_generated/component.js").ComponentApi<"browserbase">;
   agent: import("@convex-dev/agent/_generated/component.js").ComponentApi<"agent">;
   workflow: import("@convex-dev/workflow/_generated/component.js").ComponentApi<"workflow">;
   exa: import("@exalabs/convex-exa/_generated/component.js").ComponentApi<"exa">;
