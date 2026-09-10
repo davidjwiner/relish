@@ -1,0 +1,58 @@
+name: Deploy preview
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: convex-preview-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    if: github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    environment:
+      name: preview
+      url: ${{ steps.deploy.outputs.site-url }}
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
+        with:
+          node-version: '22.22.2'
+      - uses: pnpm/action-setup@v6
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm lint
+      - run: pnpm test
+      - name: Deploy isolated backend and frontend
+        id: deploy
+        env:
+          CONVEX_DEPLOY_KEY: ${{ secrets.CONVEX_PREVIEW_DEPLOY_KEY }}
+        run: |
+          if [ -z "$CONVEX_DEPLOY_KEY" ]; then
+            echo 'Add a Convex preview deploy key as CONVEX_PREVIEW_DEPLOY_KEY in the GitHub preview environment.'
+            exit 1
+          fi
+
+          pnpm deploy
+
+          deployment_json=$(pnpm exec convex run --component staticHosting lib:getUrls '{}' --prod --typecheck=disable --codegen=disable)
+          site_url=$(printf '%s' "$deployment_json" | jq -r '.siteUrl')
+          if [ -z "$site_url" ] || [ "$site_url" = null ]; then
+            echo 'Could not determine the preview site URL.'
+            exit 1
+          fi
+
+          echo "site-url=$site_url" >> "$GITHUB_OUTPUT"
+          printf '### Convex preview\n\n[%s](%s)\n' "$site_url" "$site_url" >> "$GITHUB_STEP_SUMMARY"
+      - name: Check preview routes
+        env:
+          SITE_URL: ${{ steps.deploy.outputs.site-url }}
+        run: |
+          curl --fail --retry 3 "$SITE_URL/" -o /dev/null
+          curl --fail --retry 3 "$SITE_URL/chat" -o /dev/null
+          curl --fail --retry 3 "$SITE_URL/.well-known/openid-configuration" -o /dev/null

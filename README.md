@@ -53,6 +53,18 @@ One-time setup:
 
 The hosting component preserves existing authentication routes and supports direct visits to client-side routes. The workflow supplies deployment credentials; it does not use a developer's `.env.local` or upload their working directory.
 
+## Preview deployments
+
+GitHub Actions creates or updates an isolated Convex preview deployment for every pull request opened from a branch in this repository. The workflow deploys both the backend and frontend, smoke-tests the hosted routes, and links the resulting `convex.site` URL from the GitHub `preview` environment. Each branch keeps its preview data across updates; Convex removes inactive preview deployments automatically according to the project's plan.
+
+One-time setup:
+
+1. In the Convex project settings, generate a preview deploy key.
+2. In GitHub, create an environment named `preview` and add the key as an environment secret named `CONVEX_PREVIEW_DEPLOY_KEY`. Keep this separate from the production deploy key.
+3. Configure any required default Convex environment variables for preview deployments. OAuth providers must also allow the callback URL for a preview before sign-in can work there.
+
+Preview deployments intentionally do not run for pull requests from forks because GitHub does not expose deployment secrets to forked code.
+
 ## Checks
 
 ```sh
