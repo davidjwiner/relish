@@ -1,36 +1,60 @@
 import { createTool } from '@convex-dev/agent';
+import { ExaClient } from '@exalabs/convex-exa';
 import { z } from 'zod';
-import type { ActionCtx } from '../_generated/server';
-import { api, internal } from '../_generated/api';
+import { components } from '../_generated/api';
 
-// Chat can research music and read existing preferences, but cannot change them.
-export function preferenceTools(
-  ctx: ActionCtx,
-  owner: { threadId: string; promptMessageId: string },
-) {
-  return {
-    searchMusic: createTool({
-      description:
-        'Research music on the web when requested. Starts background research; do not claim findings before completion. Does not save preferences. One background request per user turn.',
-      inputSchema: z.object({ query: z.string().trim().min(1).max(1000) }),
-      execute: async (_ctx, { query }) =>
-        ctx.runMutation(internal.preferenceWorkflows.begin, {
-          ...owner,
-          request: { kind: 'search', query },
-        }),
-    }),
-    listPreferences: createTool({
-      description:
-        'Read existing saved preferences. Follow pagination when needed. This tool cannot save or change preferences.',
-      inputSchema: z.object({
-        cursor: z.string().nullable(),
-        targetKey: z.string().nullable(),
-      }),
-      execute: async (_ctx, args) =>
-        ctx.runQuery(api.preferences.list, {
-          paginationOpts: { cursor: args.cursor, numItems: 30 },
-          ...(args.targetKey ? { targetKey: args.targetKey } : {}),
-        }),
-    }),
-  };
-}
+const exa = new ExaClient(components.exa);
+
+// Like Rocco, execute tools inside the Agent loop and return their results
+// directly to the model so it can answer in the same streamed response.
+export const musicTools = {
+  webSearch: createTool({
+    description:
+      'Search the web for music, artists, tracks, and current information. Returns source text and URLs to cite in your answer. Does not save or change preferences.',
+    inputSchema: z.object({ query: z.string().trim().min(1).max(1000) }),
+    execute: async (ctx, { query }) => {
+      try {
+        const result = await exa.search(ctx, {
+          query,
+          numResults: 5,
+          type: 'auto',
+          contents: {
+            text: { maxCharacters: 4000 },
+            maxAgeHours: 1,
+            livecrawlTimeout: 10000,
+          },
+        });
+        return {
+          error: null,
+          sources: result.results
+            .slice(0, 5)
+            .filter((source) => {
+              try {
+                const url = new URL(source.url);
+                return (
+                  ['http:', 'https:'].includes(url.protocol) &&
+                  !url.username &&
+                  !url.password
+                );
+              } catch {
+                return false;
+              }
+            })
+            .map((source) => ({
+              title: source.title.slice(0, 300),
+              url: source.url,
+              text: (source.text ?? source.highlights?.join('\n') ?? '').slice(
+                0,
+                4000,
+              ),
+            })),
+        };
+      } catch {
+        return {
+          error: 'Web search is unavailable right now. Please try again later.',
+          sources: [],
+        };
+      }
+    },
+  }),
+};
