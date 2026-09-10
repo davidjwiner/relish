@@ -23,6 +23,7 @@ import {
   preferenceExtractor,
   type ExtractionCandidate,
 } from './lib/preferenceExtraction';
+import { markTasteProfileStale } from './lib/tasteProfileState';
 
 const extractionWorkflow = new WorkflowManager(components.workflow, {
   workpoolOptions: { maxParallelism: 2 },
@@ -407,6 +408,7 @@ export const commitExtraction = internalMutation({
       else await ctx.db.insert('preferences', { ...fields, createdAt: now });
       applied++;
     }
+    if (applied) await markTasteProfileStale(ctx, args.userId, Date.now());
     await ctx.db.patch(state._id, {
       processedThroughOrder: args.capturedEndOrder,
       nextReviewAt:

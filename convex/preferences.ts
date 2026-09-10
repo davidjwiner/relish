@@ -12,6 +12,7 @@ import {
 import type { Doc } from './_generated/dataModel';
 import { currentUser } from './lib/preferenceAuth';
 import { reaction } from './lib/preferenceTypes';
+import { markTasteProfileStale } from './lib/tasteProfileState';
 
 const targetKind = v.union(v.literal('artist'), v.literal('track'));
 const profilePreference = v.object({
@@ -144,6 +145,7 @@ export const remove = mutation({
       updatedAt: now,
       revision: preference.revision + 1,
     });
+    await markTasteProfileStale(ctx, preference.userId, now);
     return null;
   },
 });

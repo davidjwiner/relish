@@ -2,6 +2,11 @@ import { defineSchema, defineTable } from 'convex/server';
 import { v } from 'convex/values';
 import { authTables } from '@convex-dev/auth/server';
 import { reaction } from './lib/preferenceTypes';
+import {
+  tasteOverview,
+  tasteProfileCoverage,
+  tasteProfileStatus,
+} from './lib/tasteProfileTypes';
 
 // Agent owns conversation records; Workflow owns background execution state.
 export default defineSchema({
@@ -45,7 +50,27 @@ export default defineSchema({
       'userId',
       'reaction',
       'target.kind',
-    ]),
+    ])
+    .index('by_userId_updatedAt', ['userId', 'updatedAt']),
+  tasteProfiles: defineTable({
+    userId: v.id('users'),
+    // Incremented transactionally whenever an active preference changes.
+    preferencesVersion: v.number(),
+    summaryVersion: v.optional(v.number()),
+    status: tasteProfileStatus,
+    overview: v.optional(tasteOverview),
+    generatedAt: v.optional(v.number()),
+    reviewedPreferenceCount: v.number(),
+    coverage: v.optional(tasteProfileCoverage),
+    model: v.optional(v.string()),
+    promptVersion: v.optional(v.string()),
+    workflowId: v.optional(v.string()),
+    nextReviewAt: v.optional(v.number()),
+    lastErrorCode: v.optional(v.string()),
+  })
+    .index('by_userId', ['userId'])
+    .index('by_nextReviewAt', ['nextReviewAt'])
+    .index('by_workflowId', ['workflowId']),
   conversationPreferenceState: defineTable({
     userId: v.id('users'),
     threadId: v.string(),

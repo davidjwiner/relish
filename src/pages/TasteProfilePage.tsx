@@ -13,6 +13,7 @@ import {
   type TargetKindFilter,
 } from '../taste/ProfileFilters';
 import { PreferenceRow, type ProfilePreference } from '../taste/PreferenceRow';
+import { TasteOverview } from '../taste/TasteOverview';
 
 const reactions = new Set<ReactionFilter>(['like', 'dislike']);
 const targetKinds = new Set<TargetKindFilter>(['artist', 'track']);
@@ -90,6 +91,8 @@ export function TasteProfilePage() {
           The artists and tracks you’ve shared a preference for.
         </p>
       </header>
+
+      <TasteOverview />
 
       <section className="mt-8" aria-label="Taste profile preferences">
         <ProfileFilters
