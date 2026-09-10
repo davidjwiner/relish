@@ -20,6 +20,8 @@ import {
 } from './_generated/server';
 import type { Id } from './_generated/dataModel';
 import { musicAgent } from './lib/musicAgent';
+import { musicTools } from './lib/preferenceTools';
+import { browser } from './lib/browser';
 import { cancel, type WorkflowId } from '@convex-dev/workflow';
 
 async function currentUser(ctx: QueryCtx | MutationCtx) {
@@ -175,7 +177,8 @@ export const send = mutation({
 // Called directly by the browser. Agent owns messages and stream state entirely.
 export const generate = action({
   args: { threadId: v.string(), promptMessageId: v.string() },
-  handler: async (ctx, args): Promise<void> => {
+  returns: v.null(),
+  handler: async (ctx, args): Promise<null> => {
     if (!(await ctx.runQuery(api.chat.getThread, { threadId: args.threadId })))
       throw new ConvexError('CONVERSATION_UNAVAILABLE');
     const [prompt] = await ctx.runQuery(
@@ -196,23 +199,31 @@ export const generate = action({
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), 120_000);
     try {
-      const result = await musicAgent.streamText(
+      await browser.withSession(
         ctx,
-        { threadId: args.threadId },
-        {
-          promptMessageId: args.promptMessageId,
-          abortSignal: controller.signal,
-          maxOutputTokens: 8192,
-          maxRetries: 0,
-          providerOptions: { convexGateway: { reasoningEffort: 'medium' } },
+        async (session) => {
+          const result = await musicAgent.streamText(
+            ctx,
+            { threadId: args.threadId },
+            {
+              promptMessageId: args.promptMessageId,
+              tools: { ...musicTools, browser: session.tool() },
+              abortSignal: controller.signal,
+              maxOutputTokens: 8192,
+              maxRetries: 0,
+              providerOptions: { convexGateway: { reasoningEffort: 'medium' } },
+            },
+            { saveStreamDeltas: { throttleMs: 100 } },
+          );
+          if (
+            ['error', 'length'].includes(await result.finishReason) ||
+            !(await result.text).trim()
+          )
+            throw new Error('Incomplete response');
         },
-        { saveStreamDeltas: { throttleMs: 100 } },
+        { signal: controller.signal, deadlineMs: Date.now() + 110_000 },
       );
-      if (
-        ['error', 'length'].includes(await result.finishReason) ||
-        !(await result.text).trim()
-      )
-        throw new Error('Incomplete response');
+      return null;
     } catch {
       throw new ConvexError('GENERATION_FAILED');
     } finally {

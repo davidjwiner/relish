@@ -33,13 +33,44 @@ Run `pnpm dev:backend` to install/sync the Agent component and regenerate bindin
 
 Once gateway access is enabled, open Chat, send a prompt, verify a streamed reply and a contextual follow-up, reload the conversation URL, then test stopping a response. The Retry response button reuses the saved prompt. Threads are private to the signed-in user. Drafts stay in memory while navigating and are cleared on reload/logout.
 
-Chat exposes a single Exa web search tool, executed directly within the Agent response loop. Set `EXA_API_KEY` in the Convex dashboard, then run `pnpm dev:backend` to sync the Exa and Workflow components. Exa credentials remain backend-only; the agent uses returned source text and URLs to answer within the same response.
+Chat exposes Exa web search and a Browserbase browser tool, executed directly within the Agent response loop. Set `EXA_API_KEY` in the Convex dashboard, then run `pnpm dev:backend` to sync the Exa and Workflow components. Exa credentials remain backend-only; the agent uses returned source text and URLs to answer within the same response.
 
 Chat does not save, update, or delete preferences in the response path. Likes and dislikes receive normal replies while a silent background workflow extracts explicit artist and track preferences later. The recurring dispatcher is disabled unless `PREFERENCE_EXTRACTION_ENABLED=true` is set in the Convex backend; run the paginated `preferenceWorkflows:backfillPage` operation before enabling it. See the [background extraction design](./conversation-preference-extraction.md).
 
 Music research runs inline with the chat response. The agent can search and continue answering for up to five steps. Search failures are returned to the agent so it can explain that verification is unavailable.
 
 Smoke-test “I like Noah Kahan” and verify a normal reply without a save confirmation or preference write. Ask to research a track and verify that Exa results lead to a sourced answer in the same response. Research must never save a preference. See [Step 3](./step-3-preference-tools.md) for scope and implementation notes.
+
+## Browser API
+
+Set `BROWSERBASE_API_KEY` in the Convex backend. `BROWSERBASE_PROJECT_ID` is optional. Run `pnpm dev:backend` to sync the component. With no key configured, ordinary chat still works and browser calls return `BROWSER_NOT_CONFIGURED`.
+
+```ts
+import { browser } from './lib/browser';
+
+await browser.withSession(ctx, async (session) => {
+  await session.goto('https://example.com');
+  const page = await session.text(); // { url, title, text, actions, truncated }
+  const facts = await session.stagehand.extract('What is this page for?');
+  return { page, facts };
+});
+```
+
+Direct methods: `goto(url)`, `click(selector)`, `fill(selector, value)`, and `text()`. Stagehand methods: `session.stagehand.act(instruction)`, `.observe(instruction)`, and `.extract(instruction)`. All return bounded results with the page URL and title. `observe` returns selectors and descriptions in `actions`.
+
+Use `tools: { ...musicTools, browser: session.tool() }` inside `withSession` to give these operations to an Agent. Await generation completion inside the callback. Relish already does this in `chat.generate`. A session starts lazily, is shared by sequential calls during one generation, and is released in `finally`. It does not persist across turns. For manual lifecycle control, use `await browser.open(ctx)` and `await session.close()`; `browser.tool({ sessionId })` binds an existing session, whose caller must close it.
+
+The component manages session creation/release over HTTP. Convex components cannot run Node actions, so `browserActions.execute` supplies the internal Node runtime for the SDK. The reusable client is initialized with `new Browserbase(components.browserbase, internal.browserActions.execute)`. Stagehand is pinned to **3.7.3** for its reconnect and keep-alive disconnect behavior; upgrading to v4 requires revisiting that lifecycle. Node dependencies are configured in `convex.json`.
+
+Operations have a 25-second deadline, with a 180-second provider session timeout as a cleanup backstop. Failed remote operations retire the session and are not retried. Stop prevents further tool work when the Agent supplies an abort signal; a remote operation already running may continue until its deadline. This version uses one page, fresh browser state, and no session tables.
+
+Run the developer-only smoke test after deployment:
+
+```sh
+pnpm exec convex run browserSmoke:run '{}'
+```
+
+It opens Example Domain, reads it, extracts facts through Stagehand in a separate action, closes the session, and reports the provider's session status. It uses Browserbase browser minutes and Stagehand inference.
 
 ## Production deployments
 
