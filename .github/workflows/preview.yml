@@ -38,9 +38,22 @@ jobs:
             exit 1
           fi
 
-          pnpm deploy
+          pnpm exec convex deploy
 
-          deployment_json=$(pnpm exec convex run --component staticHosting lib:getUrls '{}' --prod --typecheck=disable --codegen=disable)
+          deployment_json=''
+          for attempt in {1..10}; do
+            if deployment_json=$(pnpm exec convex run --component staticHosting lib:getUrls '{}' --prod --typecheck=disable --codegen=disable 2>/dev/null); then
+              break
+            fi
+            if [ "$attempt" -eq 10 ]; then
+              echo 'The static-hosting component did not become ready after deployment.'
+              exit 1
+            fi
+            sleep 2
+          done
+
+          pnpm exec static-hosting deploy --skip-convex --build-command 'pnpm build'
+
           site_url=$(printf '%s' "$deployment_json" | jq -r '.siteUrl')
           if [ -z "$site_url" ] || [ "$site_url" = null ]; then
             echo 'Could not determine the preview site URL.'
