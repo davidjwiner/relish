@@ -52,6 +52,15 @@ it('answers a preference statement without saving or starting background work', 
       ),
     ),
   ).toBe(true);
+  expect(
+    messages.page.some((m) =>
+      m.parts.some(
+        (p) =>
+          p.type === 'text' &&
+          /\b(saved|recorded|remembered|updated|deleted)\b/i.test(p.text),
+      ),
+    ),
+  ).toBe(false);
 });
 
 it('exposes only research and read tools with no preference write capability', async () => {

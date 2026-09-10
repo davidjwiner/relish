@@ -2,7 +2,7 @@
 
 ## Scope
 
-Chat can research music and read existing saved preferences. It cannot create, update, or delete preferences. A statement such as “I like Noah Kahan” receives a normal conversational reply without starting preference saving or background extraction.
+Chat can research music and read existing saved preferences. It cannot create, update, or delete preferences, and it must not claim that it did so. A statement such as “I like Noah Kahan” receives a normal conversational reply without starting preference saving or background extraction. The future offline Workflow is the sole owner of preference persistence.
 
 Preference extraction is deferred to a separate PR, following [Background preference extraction](./conversation-preference-extraction.md). This PR adds no extraction cron, extraction workflow, save card, or progress banner.
 

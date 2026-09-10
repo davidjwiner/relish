@@ -4,7 +4,7 @@
 
 ## User experience
 
-Chat answers the user's question and offers music suggestions. It does not save preferences, show save cards, announce extraction, or wait for a preference agent. A separate background agent periodically reviews conversations and updates the user's saved taste data.
+Chat answers the user's question and offers music suggestions. It does not save preferences, claim that a preference was saved, show save cards, announce extraction, or wait for a preference agent. A separate background Workflow periodically reviews conversations and is the sole owner of preference persistence.
 
 Preferences are eventually consistent: they normally appear a few minutes after a conversation, not during the reply. Extraction produces no chat messages or notifications. This removes preference tool calls from the response path; it does not eliminate the chat model's own time to first token.
 
