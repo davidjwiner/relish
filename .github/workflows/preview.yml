@@ -28,38 +28,27 @@ jobs:
       - run: pnpm install --frozen-lockfile
       - run: pnpm lint
       - run: pnpm test
-      - name: Deploy isolated backend and frontend
-        id: deploy
+      - name: Claim branch preview deployment
         env:
           CONVEX_DEPLOY_KEY: ${{ secrets.CONVEX_PREVIEW_DEPLOY_KEY }}
+        run: node .github/scripts/claim-convex-preview.mjs
+      - name: Deploy isolated backend and frontend
+        id: deploy
         run: |
           if [ -z "$CONVEX_DEPLOY_KEY" ]; then
             echo 'Add a Convex preview deploy key as CONVEX_PREVIEW_DEPLOY_KEY in the GitHub preview environment.'
             exit 1
           fi
 
-          pnpm exec convex deploy
+          pnpm exec convex env set SITE_URL "$PREVIEW_SITE_URL"
+          pnpm deploy
 
-          deployment_json=''
-          for attempt in {1..10}; do
-            if deployment_json=$(pnpm exec convex run --component staticHosting lib:getUrls '{}' --prod --typecheck=disable --codegen=disable 2>/dev/null); then
-              break
-            fi
-            if [ "$attempt" -eq 10 ]; then
-              echo 'The static-hosting component did not become ready after deployment.'
-              exit 1
-            fi
-            sleep 2
-          done
-
+          deployment_json=$(pnpm exec convex run --component staticHosting lib:getUrls '{}' --prod --typecheck=disable --codegen=disable)
           site_url=$(printf '%s' "$deployment_json" | jq -r '.siteUrl')
           if [ -z "$site_url" ] || [ "$site_url" = null ]; then
             echo 'Could not determine the preview site URL.'
             exit 1
           fi
-
-          pnpm exec convex env set SITE_URL "$site_url"
-          pnpm exec static-hosting deploy --skip-convex --build-command 'pnpm build'
 
           echo "site-url=$site_url" >> "$GITHUB_OUTPUT"
           printf '### Convex preview\n\n[%s](%s)\n' "$site_url" "$site_url" >> "$GITHUB_STEP_SUMMARY"
