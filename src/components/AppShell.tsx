@@ -2,7 +2,7 @@ import { useState, type ReactNode } from 'react';
 import { useAuthActions } from '@convex-dev/auth/react';
 import { useAction } from 'convex/react';
 import { NavLink, useLocation } from 'react-router-dom';
-import { LogOut, Menu, X, MessageCircle, Disc3, Radar } from 'lucide-react';
+import { LogOut, Menu, X, MessageCircle, Disc3 } from 'lucide-react';
 import { api } from '../../convex/_generated/api';
 import { ConversationList } from '../chat/ConversationList';
 import { Brand } from './Brand';
@@ -11,7 +11,6 @@ import { SlowOperation } from './Recovery';
 const links = [
   { to: '/chat', label: 'Chat', icon: MessageCircle },
   { to: '/taste-profile', label: 'Taste Profile', icon: Disc3 },
-  { to: '/radar', label: 'Radar', icon: Radar },
 ];
 
 export function AppShell({

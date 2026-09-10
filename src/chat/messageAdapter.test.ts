@@ -32,6 +32,7 @@ describe('chat adapter and routes', () => {
       '/chat/x/other',
       '/chat/%2f%2fevil.test',
       '/chat/x?returnTo=evil',
+      '/radar',
     ])
       expect(safeReturnTo(unsafe)).toBe('/chat');
   });
