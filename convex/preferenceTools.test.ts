@@ -63,11 +63,7 @@ it('answers a preference statement without saving or starting background work', 
   ).toBe(false);
 });
 
-it('exposes only research and read tools with no preference write capability', async () => {
-  const { preferenceTools } = await import('./lib/preferenceTools');
-  const tools = preferenceTools({} as never, {
-    threadId: 'thread',
-    promptMessageId: 'prompt',
-  });
-  expect(Object.keys(tools).sort()).toEqual(['listPreferences', 'searchMusic']);
+it('exposes only Exa web search with no preference tools', async () => {
+  const { musicTools } = await import('./lib/preferenceTools');
+  expect(Object.keys(musicTools)).toEqual(['webSearch']);
 });

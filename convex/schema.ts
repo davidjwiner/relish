@@ -28,6 +28,11 @@ export default defineSchema({
     reaction,
     reason: v.optional(v.string()),
     originatingMessageId: v.string(),
+    sourceThreadId: v.optional(v.string()),
+    sourceMessageId: v.optional(v.string()),
+    sourceQuote: v.optional(v.string()),
+    sourceCreatedAt: v.optional(v.number()),
+    removed: v.optional(v.boolean()),
     createdAt: v.number(),
     updatedAt: v.number(),
     revision: v.number(),
@@ -41,4 +46,15 @@ export default defineSchema({
       'reaction',
       'target.kind',
     ]),
+  conversationPreferenceState: defineTable({
+    userId: v.id('users'),
+    threadId: v.string(),
+    processedThroughOrder: v.number(),
+    latestUserOrder: v.number(),
+    nextReviewAt: v.optional(v.number()),
+    workflowId: v.optional(v.string()),
+    lastErrorCode: v.optional(v.string()),
+  })
+    .index('by_thread', ['threadId'])
+    .index('by_next_review', ['nextReviewAt']),
 });

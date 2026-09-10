@@ -20,9 +20,7 @@ import {
 } from './_generated/server';
 import type { Id } from './_generated/dataModel';
 import { musicAgent } from './lib/musicAgent';
-import { preferenceTools } from './lib/preferenceTools';
-import { workflowReference } from './preferenceWorkflows';
-import { stepCountIs } from 'ai';
+import { cancel, type WorkflowId } from '@convex-dev/workflow';
 
 async function currentUser(ctx: QueryCtx | MutationCtx) {
   const userId = await getAuthUserId(ctx);
@@ -77,6 +75,17 @@ export const deleteThread = mutation({
   args: { threadId: v.string() },
   handler: async (ctx, { threadId }) => {
     await requireThread(ctx, threadId);
+    const preferenceState = await ctx.db
+      .query('conversationPreferenceState')
+      .withIndex('by_thread', (q) => q.eq('threadId', threadId))
+      .unique();
+    if (preferenceState?.workflowId)
+      await cancel(
+        ctx,
+        components.workflow,
+        preferenceState.workflowId as WorkflowId,
+      );
+    if (preferenceState) await ctx.db.delete(preferenceState._id);
     const streams = await listStreams(ctx, components.agent, {
       threadId,
       includeStatuses: ['streaming'],
@@ -138,6 +147,28 @@ export const send = mutation({
       userId,
       prompt,
     });
+    const [message] = await ctx.runQuery(
+      components.agent.messages.getMessagesByIds,
+      { messageIds: [messageId] },
+    );
+    if (!message) throw new Error('Saved user message is unavailable');
+    const state = await ctx.db
+      .query('conversationPreferenceState')
+      .withIndex('by_thread', (q) => q.eq('threadId', threadId))
+      .unique();
+    const review = {
+      userId,
+      latestUserOrder: message.order,
+      nextReviewAt: Date.now() + 60_000,
+      ...(!state?.workflowId ? { lastErrorCode: undefined } : {}),
+    };
+    if (state) await ctx.db.patch(state._id, review);
+    else
+      await ctx.db.insert('conversationPreferenceState', {
+        ...review,
+        threadId,
+        processedThroughOrder: -1,
+      });
     return { threadId, promptMessageId: messageId };
   },
 });
@@ -157,8 +188,6 @@ export const generate = action({
       prompt.message?.role !== 'user'
     )
       throw new ConvexError('INVALID_MESSAGE');
-    // Reuse a research workflow already started for this prompt.
-    if (workflowReference(prompt)) return;
     try {
       await getServiceToken('ai-gateway');
     } catch {
@@ -172,8 +201,6 @@ export const generate = action({
         { threadId: args.threadId },
         {
           promptMessageId: args.promptMessageId,
-          tools: preferenceTools(ctx, args),
-          stopWhen: stepCountIs(5),
           abortSignal: controller.signal,
           maxOutputTokens: 8192,
           maxRetries: 0,

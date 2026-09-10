@@ -59,10 +59,12 @@ export const list = query({
           .withIndex('by_user_target', (q) =>
             q.eq('userId', userId).eq('targetKey', args.targetKey!),
           )
+          .filter((q) => q.neq(q.field('removed'), true))
           .paginate(opts)
       : await ctx.db
           .query('preferences')
           .withIndex('by_user', (q) => q.eq('userId', userId))
+          .filter((q) => q.neq(q.field('removed'), true))
           .order('desc')
           .paginate(opts);
     return {
@@ -113,6 +115,7 @@ export const listProfile = query({
                 .query('preferences')
                 .withIndex('by_user', (q) => q.eq('userId', userId))
     )
+      .filter((q) => q.neq(q.field('removed'), true))
       .order('desc')
       .paginate(opts);
     return {
@@ -127,9 +130,20 @@ export const remove = mutation({
   returns: v.null(),
   handler: async (ctx, { preferenceId }) => {
     const preference = await ctx.db.get(preferenceId);
-    if (!preference || preference.userId !== (await currentUser(ctx)))
+    if (
+      !preference ||
+      preference.removed ||
+      preference.userId !== (await currentUser(ctx))
+    )
       throw new ConvexError('PREFERENCE_UNAVAILABLE');
-    await ctx.db.delete(preferenceId);
+    const now = Date.now();
+    await ctx.db.patch(preferenceId, {
+      removed: true,
+      sourceCreatedAt: now,
+      sourceMessageId: preferenceId,
+      updatedAt: now,
+      revision: preference.revision + 1,
+    });
     return null;
   },
 });

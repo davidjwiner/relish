@@ -124,4 +124,4 @@ The first three steps can ship as the saved-preferences viewer. Step four is req
 
 After validating the collection, consider an explicitly labeled “Relish's interpretation” summary with links to supporting preferences, followed by genre/subgenre groupings. Neither should be presented as a direct user statement. A music map can build on those groupings later.
 
-Users can remove a preference directly from its row after a confirmation prompt. The MVP removes the current record after an ownership check. Once background extraction is enabled, replace deletion with a tombstone that uses the same evidence-ordering boundary as extraction, so an older conversation batch cannot recreate a preference the user removed. Direct edits and reaction changes remain a separate follow-up.
+Users can remove a preference directly from its row after a confirmation prompt. Removal creates an ownership-checked tombstone using the current time as its ordering boundary, so an older extraction batch cannot recreate the preference. A newer explicit statement can create it again. Direct edits and reaction changes remain a separate follow-up.

@@ -87,7 +87,7 @@ export function AppShell({
               </NavLink>
             ))}
           </nav>
-          {isChat && <ConversationList onSelect={() => setOpen(false)} />}
+          <ConversationList onSelect={() => setOpen(false)} />
           <div className="mt-8 shrink-0 border-t border-line px-3 pt-5 md:mt-auto">
             <p className="truncate font-semibold">{name || 'Your space'}</p>
             <button
