@@ -1,82 +1,19 @@
 import { convexTest } from 'convex-test';
-import agentTest from '@convex-dev/agent/test';
-import { registerWorkflow } from '../test-support/workflow';
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { listMessages } from '@convex-dev/agent';
-import { generateText } from 'ai';
+import { describe, expect, it } from 'vitest';
 import schema from './schema';
-import { api, components, internal } from './_generated/api';
+import { api } from './_generated/api';
 
-vi.mock('convex/server', async (original) => ({
-  ...(await original<typeof import('convex/server')>()),
-  getServiceToken: vi.fn(async () => 'test-token'),
-}));
-const researchMocks = vi.hoisted(() => ({ search: vi.fn() }));
-vi.mock('@exalabs/convex-exa', () => ({
-  ExaClient: class {
-    search = researchMocks.search;
-  },
-}));
-vi.mock('ai', async (original) => ({
-  ...(await original<typeof import('ai')>()),
-  generateText: vi.fn(async () => ({
-    output: {
-      answer: 'The opening track is Stick Season by Noah Kahan.',
-      target: {
-        kind: 'track',
-        name: 'Stick Season',
-        artists: ['Noah Kahan'],
-        version: null,
-      },
-      evidence: [
-        {
-          url: 'https://example.com/episode',
-          quote: 'Opening track: Stick Season by Noah Kahan.',
-        },
-      ],
-    },
-  })),
-}));
 const modules = import.meta.glob('./**/*.ts');
-async function setup(withResearch = true) {
-  const t = convexTest(schema, modules);
-  agentTest.register(t);
-  if (withResearch) registerWorkflow(t);
-  const [alice, bob] = await t.run(async (ctx) => [
-    await ctx.db.insert('users', { name: 'Alice' }),
-    await ctx.db.insert('users', { name: 'Bob' }),
-  ]);
-  const a = t.withIdentity({ subject: `${alice}|session` });
-  const b = t.withIdentity({ subject: `${bob}|session` });
-  const saved = await a.mutation(api.chat.send, {
-    prompt: 'I love Stick Season because of the storytelling.',
-  });
-  const finish = () => t.finishAllScheduledFunctions(() => vi.runAllTimers());
-  const list = () =>
-    a.query(api.preferences.list, {
-      paginationOpts: { cursor: null, numItems: 30 },
-    });
-  return { t, a, b, alice, saved, finish, list };
-}
-beforeEach(() => {
-  vi.useFakeTimers();
-  researchMocks.search.mockReset().mockResolvedValue({
-    results: [
-      {
-        title: 'Tracklist',
-        url: 'https://example.com/episode',
-        text: 'Opening track: Stick Season by Noah Kahan.',
-      },
-    ],
-  });
-});
-afterEach(() => {
-  vi.useRealTimers();
-  vi.clearAllMocks();
-});
-describe('Read-only preferences and music research', () => {
-  it('authenticates preference reads and isolates users', async () => {
-    const { t, b, alice, list } = await setup(false);
+
+describe('preference reads', () => {
+  it('requires authentication and isolates preferences by user', async () => {
+    const t = convexTest(schema, modules);
+    const [alice, bob] = await t.run(async (ctx) => [
+      await ctx.db.insert('users', { name: 'Alice' }),
+      await ctx.db.insert('users', { name: 'Bob' }),
+    ]);
+    const a = t.withIdentity({ subject: `${alice}|session` });
+    const b = t.withIdentity({ subject: `${bob}|session` });
     await expect(
       t.query(api.preferences.list, {
         paginationOpts: { cursor: null, numItems: 30 },
@@ -98,7 +35,10 @@ describe('Read-only preferences and music research', () => {
         revision: 1,
       });
     });
-    expect((await list()).page[0].name).toBe('Noah Kahan');
+    const alicePreferences = await a.query(api.preferences.list, {
+      paginationOpts: { cursor: null, numItems: 30 },
+    });
+    expect(alicePreferences.page[0].name).toBe('Noah Kahan');
     expect(
       (
         await b.query(api.preferences.list, {
@@ -106,133 +46,5 @@ describe('Read-only preferences and music research', () => {
         })
       ).page,
     ).toEqual([]);
-  });
-  it('rejects research on another user’s conversation and mismatched prompts', async () => {
-    const { a, b, saved } = await setup();
-    const request = { kind: 'search' as const, query: 'First track' };
-    await expect(
-      b.mutation(internal.preferenceWorkflows.begin, { ...saved, request }),
-    ).rejects.toThrow('CONVERSATION_UNAVAILABLE');
-    const other = await a.mutation(api.chat.send, {
-      prompt: 'Other conversation',
-    });
-    await expect(
-      a.mutation(internal.preferenceWorkflows.begin, {
-        ...saved,
-        promptMessageId: other.promptMessageId,
-        request,
-      }),
-    ).rejects.toThrow('INVALID_MESSAGE');
-  });
-  it('returns cited research without saving a preference', async () => {
-    const { a, t, saved, finish, list } = await setup();
-    await a.mutation(internal.preferenceWorkflows.begin, {
-      ...saved,
-      request: { kind: 'search', query: 'First track in the latest episode' },
-    });
-    await finish();
-    expect((await list()).page).toEqual([]);
-    const messages = await t.run((ctx) =>
-      listMessages(ctx, components.agent, {
-        threadId: saved.threadId,
-        paginationOpts: { cursor: null, numItems: 30 },
-      }),
-    );
-    expect(
-      messages.page.some((m) =>
-        m.text?.includes('[Source 1](https://example.com/episode)'),
-      ),
-    ).toBe(true);
-  });
-  it('does not save when evidence is fabricated or research is ambiguous', async () => {
-    const { a, saved, finish, list } = await setup();
-    vi.mocked(generateText).mockResolvedValueOnce({
-      output: {
-        answer: 'A guess',
-        evidence: [
-          {
-            url: 'https://example.com/episode',
-            quote: 'Not present in the source',
-          },
-        ],
-      },
-    } as never);
-    await a.mutation(internal.preferenceWorkflows.begin, {
-      ...saved,
-      request: { kind: 'search', query: 'An unknown track' },
-    });
-    await finish();
-    expect((await list()).page).toEqual([]);
-  });
-  it('retries transient research failures and completes only once', async () => {
-    const { t, a, alice, saved, finish, list } = await setup();
-    researchMocks.search.mockRejectedValueOnce(new Error('HTTP 503'));
-    const started = await a.mutation(internal.preferenceWorkflows.begin, {
-      ...saved,
-      request: { kind: 'search', query: 'First track' },
-    });
-    await finish();
-    expect(researchMocks.search).toHaveBeenCalledTimes(2);
-    expect((await list()).page).toEqual([]);
-    await t.mutation(internal.preferenceWorkflows.complete, {
-      workflowId: started.workflowId as never,
-      result: { kind: 'success', returnValue: 'Duplicate completion' },
-      context: { ...saved, userId: alice },
-    });
-    const messages = await t.run((ctx) =>
-      listMessages(ctx, components.agent, {
-        threadId: saved.threadId,
-        paginationOpts: { cursor: null, numItems: 30 },
-      }),
-    );
-    expect(messages.page.some((m) => m.text === 'Duplicate completion')).toBe(
-      false,
-    );
-  });
-  it('reports permanent research failures without retrying or saving', async () => {
-    const { a, saved, finish, list } = await setup();
-    researchMocks.search.mockRejectedValueOnce(
-      new Error('HTTP 401 invalid key'),
-    );
-    await a.mutation(internal.preferenceWorkflows.begin, {
-      ...saved,
-      request: { kind: 'search', query: 'First track' },
-    });
-    await finish();
-    expect(researchMocks.search).toHaveBeenCalledTimes(1);
-    expect((await list()).page).toEqual([]);
-  });
-  it('research-only requests do not write preferences', async () => {
-    const { a, saved, finish, list } = await setup();
-    await a.mutation(internal.preferenceWorkflows.begin, {
-      ...saved,
-      request: { kind: 'search', query: 'What opened the episode?' },
-    });
-    await finish();
-    expect((await list()).page).toEqual([]);
-  });
-  it('does not post research to a conversation that lost its owner', async () => {
-    const { t, a, saved, finish, list } = await setup();
-    await a.mutation(internal.preferenceWorkflows.begin, {
-      ...saved,
-      request: { kind: 'search', query: 'First track in the episode' },
-    });
-    await t.run((ctx) =>
-      ctx.runMutation(components.agent.threads.updateThread, {
-        threadId: saved.threadId,
-        patch: { userId: 'deleted' },
-      }),
-    );
-    await finish();
-    const messages = await t.run((ctx) =>
-      listMessages(ctx, components.agent, {
-        threadId: saved.threadId,
-        paginationOpts: { cursor: null, numItems: 30 },
-      }),
-    );
-    expect(
-      messages.page.filter((m) => m.message?.role === 'assistant'),
-    ).toEqual([]);
-    expect((await list()).page).toEqual([]);
   });
 });

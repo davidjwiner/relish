@@ -12,7 +12,6 @@ import type * as auth from "../auth.js";
 import type * as chat from "../chat.js";
 import type * as http from "../http.js";
 import type * as lib_musicAgent from "../lib/musicAgent.js";
-import type * as lib_musicResearch from "../lib/musicResearch.js";
 import type * as lib_preferenceAuth from "../lib/preferenceAuth.js";
 import type * as lib_preferenceTools from "../lib/preferenceTools.js";
 import type * as lib_preferenceTypes from "../lib/preferenceTypes.js";
@@ -31,7 +30,6 @@ declare const fullApi: ApiFromModules<{
   chat: typeof chat;
   http: typeof http;
   "lib/musicAgent": typeof lib_musicAgent;
-  "lib/musicResearch": typeof lib_musicResearch;
   "lib/preferenceAuth": typeof lib_preferenceAuth;
   "lib/preferenceTools": typeof lib_preferenceTools;
   "lib/preferenceTypes": typeof lib_preferenceTypes;

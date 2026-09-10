@@ -20,7 +20,6 @@ import {
 } from './_generated/server';
 import type { Id } from './_generated/dataModel';
 import { musicAgent } from './lib/musicAgent';
-import { workflowReference } from './preferenceWorkflows';
 import { cancel, type WorkflowId } from '@convex-dev/workflow';
 
 async function currentUser(ctx: QueryCtx | MutationCtx) {
@@ -189,8 +188,6 @@ export const generate = action({
       prompt.message?.role !== 'user'
     )
       throw new ConvexError('INVALID_MESSAGE');
-    // Reuse a research workflow already started for this prompt.
-    if (workflowReference(prompt)) return;
     try {
       await getServiceToken('ai-gateway');
     } catch {
