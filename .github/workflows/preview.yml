@@ -40,7 +40,6 @@ jobs:
             exit 1
           fi
 
-          pnpm exec convex env set SITE_URL "$PREVIEW_SITE_URL"
           pnpm deploy
 
           deployment_json=$(pnpm exec convex run --component staticHosting lib:getUrls '{}' --prod --typecheck=disable --codegen=disable)

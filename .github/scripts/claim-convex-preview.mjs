@@ -40,25 +40,9 @@ if (!claimResponse.ok) {
 }
 
 const claim = await claimResponse.json();
-if (!claim.adminKey || !claim.instanceUrl) {
+if (!claim.adminKey) {
   throw new Error('Convex preview claim returned an invalid response.');
 }
 
-const urlsResponse = await fetch(
-  `${claim.instanceUrl}/api/v1/get_canonical_urls`,
-  { headers: { Authorization: `Convex ${claim.adminKey}` } },
-);
-if (!urlsResponse.ok) {
-  throw new Error(`Convex URL lookup failed (${urlsResponse.status}).`);
-}
-
-const urls = await urlsResponse.json();
-if (!urls.convexSiteUrl) {
-  throw new Error('Convex URL lookup did not return a site URL.');
-}
-
 process.stdout.write(`::add-mask::${claim.adminKey}\n`);
-appendFileSync(
-  githubEnv,
-  `CONVEX_DEPLOY_KEY=${claim.adminKey}\nPREVIEW_SITE_URL=${urls.convexSiteUrl}\n`,
-);
+appendFileSync(githubEnv, `CONVEX_DEPLOY_KEY=${claim.adminKey}\n`);
