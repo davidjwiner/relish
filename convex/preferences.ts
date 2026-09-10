@@ -36,10 +36,12 @@ export const list = query({
           .withIndex('by_user_target', (q) =>
             q.eq('userId', userId).eq('targetKey', args.targetKey!),
           )
+          .filter((q) => q.neq(q.field('removed'), true))
           .paginate(opts)
       : await ctx.db
           .query('preferences')
           .withIndex('by_user', (q) => q.eq('userId', userId))
+          .filter((q) => q.neq(q.field('removed'), true))
           .order('desc')
           .paginate(opts);
     return {
