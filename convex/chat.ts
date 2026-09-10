@@ -20,7 +20,11 @@ import {
 } from './_generated/server';
 import type { Id } from './_generated/dataModel';
 import { musicAgent } from './lib/musicAgent';
-import { cancel, type WorkflowId } from '@convex-dev/workflow';
+import {
+  cancel,
+  getStatus as getWorkflowStatus,
+  type WorkflowId,
+} from '@convex-dev/workflow';
 
 async function currentUser(ctx: QueryCtx | MutationCtx) {
   const userId = await getAuthUserId(ctx);
@@ -79,12 +83,19 @@ export const deleteThread = mutation({
       .query('conversationPreferenceState')
       .withIndex('by_thread', (q) => q.eq('threadId', threadId))
       .unique();
-    if (preferenceState?.workflowId)
-      await cancel(
+    if (preferenceState?.workflowId) {
+      const workflowId = preferenceState.workflowId as WorkflowId;
+      // A workflow can finish before its completion callback clears this field.
+      // `cancel` rejects terminal workflows, but deleting the conversation must
+      // remain safe during that short handoff window.
+      const status = await getWorkflowStatus(
         ctx,
         components.workflow,
-        preferenceState.workflowId as WorkflowId,
+        workflowId,
       );
+      if (status.type === 'inProgress')
+        await cancel(ctx, components.workflow, workflowId);
+    }
     if (preferenceState) await ctx.db.delete(preferenceState._id);
     const streams = await listStreams(ctx, components.agent, {
       threadId,
