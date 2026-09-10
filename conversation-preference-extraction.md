@@ -1,6 +1,6 @@
 # Background preference extraction
 
-**Status: deferred to the next PR.** Workflow is the agreed orchestration approach. The current PR removes chat-triggered preference saving; this document describes the subsequent offline extraction implementation.
+**Status: implemented.** Workflow is the orchestration approach. Preference extraction runs outside the chat response path and remains gated by the backend `PREFERENCE_EXTRACTION_ENABLED` setting for rollout.
 
 ## User experience
 
@@ -88,7 +88,7 @@ Record counts, duration, token usage, checkpoint lag, and error codes in backend
 
 ## Implementation and acceptance
 
-In the next PR:
+Implemented scope:
 
 1. Preserve the current read-only chat behavior: ordinary chat and explicitly requested research remain independent of preference extraction.
 2. Add the conversation checkpoint table and the lightweight `chat.send` update.

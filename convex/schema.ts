@@ -28,10 +28,26 @@ export default defineSchema({
     reaction,
     reason: v.optional(v.string()),
     originatingMessageId: v.string(),
+    sourceThreadId: v.optional(v.string()),
+    sourceMessageId: v.optional(v.string()),
+    sourceQuote: v.optional(v.string()),
+    sourceCreatedAt: v.optional(v.number()),
+    removed: v.optional(v.boolean()),
     createdAt: v.number(),
     updatedAt: v.number(),
     revision: v.number(),
   })
     .index('by_user', ['userId'])
     .index('by_user_target', ['userId', 'targetKey']),
+  conversationPreferenceState: defineTable({
+    userId: v.id('users'),
+    threadId: v.string(),
+    processedThroughOrder: v.number(),
+    latestUserOrder: v.number(),
+    nextReviewAt: v.optional(v.number()),
+    workflowId: v.optional(v.string()),
+    lastErrorCode: v.optional(v.string()),
+  })
+    .index('by_thread', ['threadId'])
+    .index('by_next_review', ['nextReviewAt']),
 });
