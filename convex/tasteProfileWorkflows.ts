@@ -208,6 +208,13 @@ export const generateTasteOverview = internalAction({
   returns: v.object({ output: reviewOutputValidator, tokenUsage: v.number() }),
   handler: async (_ctx, args) => {
     await getServiceToken('ai-gateway');
+    const preferenceIdsByEvidenceId = new Map<string, Id<'preferences'>>();
+    const preferences = args.preferences.map((preference, index) => {
+      const evidenceId = `p${index + 1}`;
+      const { id, ...details } = preference;
+      preferenceIdsByEvidenceId.set(evidenceId, id);
+      return { evidenceId, ...details };
+    });
     const result = await generateText({
       model: tasteReviewAgent.model,
       output: Output.object({ schema: tasteReviewAgent.output }),
@@ -216,10 +223,25 @@ export const generateTasteOverview = internalAction({
       abortSignal: AbortSignal.timeout(90_000),
       providerOptions: { convexGateway: { reasoningEffort: 'medium' } },
       system: tasteReviewAgent.instructions,
-      prompt: JSON.stringify({ preferences: args.preferences }),
+      prompt: JSON.stringify({ preferences }),
     });
+    const restorePreferenceIds = (ids: string[]) =>
+      ids.map((id) => preferenceIdsByEvidenceId.get(id) ?? id);
+    const restoreClaimIds = (claims: TasteReviewOutput['drawnTo']) =>
+      claims.map((claim) => ({
+        ...claim,
+        evidenceIds: restorePreferenceIds(claim.evidenceIds),
+      }));
     return {
-      output: result.output,
+      output: {
+        ...result.output,
+        overviewEvidenceIds: restorePreferenceIds(
+          result.output.overviewEvidenceIds,
+        ),
+        drawnTo: restoreClaimIds(result.output.drawnTo),
+        avoids: restoreClaimIds(result.output.avoids),
+        nuances: restoreClaimIds(result.output.nuances),
+      },
       tokenUsage: result.usage.totalTokens ?? 0,
     };
   },
