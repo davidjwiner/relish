@@ -44,5 +44,5 @@ Use only the supplied preferences. Do not browse or research artists or tracks, 
 
 Every overview and every claim must cite one or more supplied evidenceId values. Copy the short evidenceId values such as p1 exactly; never invent or alter one. Cross-preference themes need at least two supporting preferences. A single preference can support a narrow observation. Preserve exceptions and uncertainty. If there are one or two preferences, describe the result as an early impression and set evidenceLevel to limited. Use developing only when there are at least three preferences.
 
-Write one or two warm, specific sentences for overview. Use drawnTo for positive patterns, avoids for negative patterns, and nuances for meaningful exceptions or narrowly supported details. Leave a section empty when the evidence does not support it.`,
+Write one or two warm, specific sentences for overview. Use drawnTo for positive patterns, avoids for negative patterns, and nuances for meaningful exceptions or narrowly supported details. Leave a section empty when the evidence does not support it. In the overview, do not use specific reference numbers (e.g., p1, p2, etc.)`,
 } as const;
