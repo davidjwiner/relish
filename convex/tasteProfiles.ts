@@ -1,5 +1,11 @@
 import { v } from 'convex/values';
-import { mutation, query, type QueryCtx } from './_generated/server';
+import { internal } from './_generated/api';
+import {
+  mutation,
+  query,
+  type MutationCtx,
+  type QueryCtx,
+} from './_generated/server';
 import type { Id } from './_generated/dataModel';
 import { currentUser } from './lib/preferenceAuth';
 import { TASTE_REVIEW_COOLDOWN_MS } from './lib/tasteProfileState';
@@ -109,20 +115,29 @@ export const requestRefresh = mutation({
         reviewedPreferenceCount: 0,
         nextReviewAt: now,
       });
+      await scheduleTasteReview(ctx, userId);
       return { scheduled: true };
     }
     if (profile.workflowId) return { scheduled: false };
     const cooldownUntil = (profile.generatedAt ?? 0) + TASTE_REVIEW_COOLDOWN_MS;
-    if (profile.status !== 'failed' && cooldownUntil > now)
+    const isStale = profile.summaryVersion !== profile.preferencesVersion;
+    if (!isStale && profile.status !== 'failed' && cooldownUntil > now)
       return { scheduled: false, cooldownUntil };
     await ctx.db.patch(profile._id, {
       status: 'pending',
       nextReviewAt: now,
       lastErrorCode: undefined,
     });
+    await scheduleTasteReview(ctx, userId);
     return { scheduled: true };
   },
 });
+
+async function scheduleTasteReview(ctx: MutationCtx, userId: Id<'users'>) {
+  await ctx.scheduler.runAfter(0, internal.tasteProfileWorkflows.startForUser, {
+    userId,
+  });
+}
 
 async function presentOverview(
   ctx: QueryCtx,

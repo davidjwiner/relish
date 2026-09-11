@@ -1,7 +1,7 @@
 import { convexTest } from 'convex-test';
 import { describe, expect, it, vi } from 'vitest';
 import { registerWorkflow } from '../test-support/workflow';
-import { api, internal } from './_generated/api';
+import { api } from './_generated/api';
 import schema from './schema';
 
 vi.mock('convex/server', async (original) => ({
@@ -76,7 +76,7 @@ async function addPreference(
 }
 
 describe('taste profile reviews', () => {
-  it('generates and publishes an evidence-backed overview', async () => {
+  it('starts and publishes an evidence-backed overview when requested', async () => {
     vi.useFakeTimers();
     try {
       const { t, user, userId } = await setup();
@@ -84,9 +84,6 @@ describe('taste profile reviews', () => {
       await addPreference(t, userId, 'Nora En Pure', 2);
 
       await user.mutation(api.tasteProfiles.requestRefresh, {});
-      await t.mutation(internal.tasteProfileWorkflows.dispatchDue, {
-        force: true,
-      });
       await t.finishAllScheduledFunctions(() => vi.runAllTimers());
 
       const profile = await user.query(api.tasteProfiles.get, {});
@@ -147,9 +144,6 @@ describe('taste profile reviews', () => {
       const { t, user } = await setup();
 
       await user.mutation(api.tasteProfiles.requestRefresh, {});
-      await t.mutation(internal.tasteProfileWorkflows.dispatchDue, {
-        force: true,
-      });
       await t.finishAllScheduledFunctions(() => vi.runAllTimers());
 
       expect(await user.query(api.tasteProfiles.get, {})).toMatchObject({

@@ -8,11 +8,12 @@ import { getServiceToken } from 'convex/server';
 import { v } from 'convex/values';
 import { generateText, Output } from 'ai';
 import { components, internal } from './_generated/api';
-import type { Id } from './_generated/dataModel';
+import type { Doc, Id } from './_generated/dataModel';
 import {
   internalAction,
   internalMutation,
   internalQuery,
+  type MutationCtx,
   type QueryCtx,
 } from './_generated/server';
 import { CHAT_MODEL } from './lib/musicAgent';
@@ -60,6 +61,10 @@ const reviewRunResultValidator = v.object({
   ),
   inputCount: v.number(),
 });
+const startReviewResultValidator = v.object({
+  started: v.boolean(),
+  inProgress: v.boolean(),
+});
 
 type ReviewPreference = {
   id: Id<'preferences'>;
@@ -79,6 +84,23 @@ type ReviewRunResult = {
   inputCount: number;
 };
 
+export const startForUser = internalMutation({
+  args: { userId: v.id('users') },
+  returns: startReviewResultValidator,
+  handler: async (ctx, { userId }) => {
+    const profile = await ctx.db
+      .query('tasteProfiles')
+      .withIndex('by_userId', (q) => q.eq('userId', userId))
+      .unique();
+    if (!profile) return { started: false, inProgress: false };
+    if (profile.workflowId) return { started: false, inProgress: true };
+    return {
+      started: await startTasteReview(ctx, profile, Date.now()),
+      inProgress: false,
+    };
+  },
+});
+
 export const dispatchDue = internalMutation({
   args: { force: v.optional(v.boolean()) },
   returns: v.object({ started: v.number(), disabled: v.boolean() }),
@@ -96,39 +118,47 @@ export const dispatchDue = internalMutation({
     let started = 0;
     for (const profile of due) {
       if (started >= 5 || profile.workflowId) continue;
-      if (!(await ctx.db.get(profile.userId))) {
-        await ctx.db.delete(profile._id);
-        continue;
-      }
-      const workflowId = await tasteReviewWorkflow.start(
-        ctx,
-        internal.tasteProfileWorkflows.runTasteReview,
-        {
-          userId: profile.userId,
-          preferencesVersion: profile.preferencesVersion,
-          startedAt: now,
-        },
-        {
-          startAsync: true,
-          onComplete: internal.tasteProfileWorkflows.completeTasteReview,
-          context: {
-            userId: profile.userId,
-            preferencesVersion: profile.preferencesVersion,
-          },
-        },
-      );
-      await ctx.db.patch(profile._id, {
-        workflowId,
-        status: 'running',
-        nextReviewAt: undefined,
-        lastErrorCode: undefined,
-      });
-      started++;
+      if (await startTasteReview(ctx, profile, now)) started++;
     }
     console.info('taste profile review dispatch', { started });
     return { started, disabled: false };
   },
 });
+
+async function startTasteReview(
+  ctx: MutationCtx,
+  profile: Doc<'tasteProfiles'>,
+  startedAt: number,
+) {
+  if (!(await ctx.db.get(profile.userId))) {
+    await ctx.db.delete(profile._id);
+    return false;
+  }
+  const workflowId = await tasteReviewWorkflow.start(
+    ctx,
+    internal.tasteProfileWorkflows.runTasteReview,
+    {
+      userId: profile.userId,
+      preferencesVersion: profile.preferencesVersion,
+      startedAt,
+    },
+    {
+      startAsync: true,
+      onComplete: internal.tasteProfileWorkflows.completeTasteReview,
+      context: {
+        userId: profile.userId,
+        preferencesVersion: profile.preferencesVersion,
+      },
+    },
+  );
+  await ctx.db.patch(profile._id, {
+    workflowId,
+    status: 'running',
+    nextReviewAt: undefined,
+    lastErrorCode: undefined,
+  });
+  return true;
+}
 
 export const snapshotPreferences = internalQuery({
   args: {

@@ -29,8 +29,7 @@ export function TasteOverview() {
     setMessage('');
     try {
       const result = await requestRefresh({});
-      if (result.scheduled)
-        setMessage('Your taste overview is being reviewed.');
+      if (result.scheduled) setMessage('Starting your taste review.');
       else if (result.cooldownUntil) {
         const time = new Intl.DateTimeFormat(undefined, {
           hour: 'numeric',

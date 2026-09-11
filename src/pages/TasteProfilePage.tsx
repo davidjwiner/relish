@@ -5,7 +5,7 @@ import {
   usePaginatedQuery,
 } from 'convex/react';
 import { useSearchParams } from 'react-router-dom';
-import { LoaderCircle } from 'lucide-react';
+import { LoaderCircle, RefreshCw } from 'lucide-react';
 import { api } from '../../convex/_generated/api';
 import {
   ProfileFilters,
@@ -42,9 +42,14 @@ export function TasteProfilePage() {
   );
   const { isWebSocketConnected } = useConvexConnectionState();
   const removePreference = useMutation(api.preferences.remove);
+  const requestExtraction = useMutation(
+    api.preferenceWorkflows.requestExtraction,
+  );
   const hasFilters = Boolean(reaction || targetKind);
   const [removingId, setRemovingId] = useState<string | null>(null);
   const [removeError, setRemoveError] = useState('');
+  const [refreshing, setRefreshing] = useState(false);
+  const [refreshMessage, setRefreshMessage] = useState('');
 
   function updateFilter(
     key: 'reaction' | 'type',
@@ -77,22 +82,69 @@ export function TasteProfilePage() {
     }
   }
 
+  async function refreshPreferences() {
+    if (refreshing) return;
+    setRefreshing(true);
+    setRefreshMessage('');
+    try {
+      const result = await requestExtraction({});
+      setRefreshMessage(
+        result.started
+          ? 'Reviewing your conversations for preferences.'
+          : result.inProgress
+            ? 'Your preferences are already being reviewed.'
+            : 'Your conversations are already up to date.',
+      );
+    } catch {
+      setRefreshMessage('Couldn’t refresh your preferences. Please try again.');
+    } finally {
+      setRefreshing(false);
+    }
+  }
+
   const loading = status === 'LoadingFirstPage';
   return (
     <div className="mx-auto max-w-4xl">
-      <header>
-        <p className="text-sm font-semibold tracking-[0.15em] text-muted uppercase">
-          Uniquely yours
-        </p>
-        <h1 className="mt-3 text-3xl font-semibold tracking-tight sm:text-4xl">
-          Taste Profile
-        </h1>
-        <p className="mt-3 max-w-xl leading-relaxed text-muted">
-          The artists and tracks you’ve shared a preference for.
-        </p>
+      <header className="flex flex-wrap items-end justify-between gap-4">
+        <div>
+          <p className="text-sm font-semibold tracking-[0.15em] text-muted uppercase">
+            Uniquely yours
+          </p>
+          <h1 className="mt-3 text-3xl font-semibold tracking-tight sm:text-4xl">
+            Taste Profile
+          </h1>
+          <p className="mt-3 max-w-xl leading-relaxed text-muted">
+            The artists and tracks you’ve shared a preference for.
+          </p>
+        </div>
+        <button
+          type="button"
+          disabled={refreshing}
+          onClick={() => void refreshPreferences()}
+          className="inline-flex min-h-10 items-center gap-2 rounded-xl border border-line bg-white px-3 py-2 text-sm font-semibold hover:bg-paper disabled:opacity-60"
+        >
+          {refreshing ? (
+            <LoaderCircle
+              size={16}
+              className="animate-spin"
+              aria-hidden="true"
+            />
+          ) : (
+            <RefreshCw size={16} aria-hidden="true" />
+          )}
+          {refreshing ? 'Refreshing…' : 'Refresh preferences'}
+        </button>
       </header>
 
       <TasteOverview />
+      {refreshMessage && (
+        <p
+          role="status"
+          className={`mt-4 text-sm ${refreshMessage.startsWith('Couldn’t') ? 'text-red-700' : 'text-muted'}`}
+        >
+          {refreshMessage}
+        </p>
+      )}
 
       <section className="mt-8" aria-label="Taste profile preferences">
         <ProfileFilters

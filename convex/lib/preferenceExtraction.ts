@@ -23,7 +23,7 @@ export const extractionOutput = z.object({
           messageId: z.string().min(1),
           quote: z.string().min(1).max(1000),
         }),
-        reason: z.string().min(1).max(500).nullable().optional(),
+        reason: z.string().min(1).max(500).nullable(),
       }),
     )
     .max(20),

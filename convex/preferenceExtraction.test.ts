@@ -55,16 +55,9 @@ describe('background conversation preference extraction', () => {
       const saved = await user.mutation(api.chat.send, {
         prompt: 'I love Adrianne Lenker.',
       });
-      const state = await t.run((ctx) =>
-        ctx.db
-          .query('conversationPreferenceState')
-          .withIndex('by_thread', (q) => q.eq('threadId', saved.threadId))
-          .unique(),
-      );
-      await t.run((ctx) => ctx.db.patch(state!._id, { nextReviewAt: 0 }));
-      await t.mutation(internal.preferenceWorkflows.dispatchDue, {
-        force: true,
-      });
+      expect(
+        await user.mutation(api.preferenceWorkflows.requestExtraction, {}),
+      ).toMatchObject({ started: 1, inProgress: false });
       await t.finishAllScheduledFunctions(() => vi.runAllTimers());
 
       const preferences = await user.query(api.preferences.list, {
@@ -286,5 +279,28 @@ describe('background conversation preference extraction', () => {
           .unique(),
       ),
     ).toBeNull();
+  });
+
+  it('deletes a conversation when its workflow has already finished', async () => {
+    const { t, user } = await setup();
+    const saved = await user.mutation(api.chat.send, {
+      prompt: 'I dislike this track.',
+    });
+    const state = await t.run((ctx) =>
+      ctx.db
+        .query('conversationPreferenceState')
+        .withIndex('by_thread', (q) => q.eq('threadId', saved.threadId))
+        .unique(),
+    );
+    await t.run((ctx) => ctx.db.patch(state!._id, { nextReviewAt: 0 }));
+    await t.mutation(internal.preferenceWorkflows.dispatchDue, { force: true });
+    const runningState = await t.run((ctx) => ctx.db.get(state!._id));
+    await t.mutation(components.workflow.workflow.cancel, {
+      workflowId: runningState!.workflowId!,
+    });
+
+    await expect(
+      user.mutation(api.chat.deleteThread, { threadId: saved.threadId }),
+    ).resolves.toBeNull();
   });
 });

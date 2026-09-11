@@ -27,7 +27,7 @@
     "@assistant-ui/react-markdown": "^0.14.14",
     "@auth/core": "0.41.1",
     "@convex-dev/agent": "^0.7.2",
-    "@convex-dev/ai-sdk-provider": "^0.1.0",
+    "@convex-dev/ai-sdk-provider": "0.2.0-alpha.1",
     "@convex-dev/auth": "0.0.95",
     "@convex-dev/static-hosting": "0.2.1",
     "@convex-dev/workflow": "^0.4.6",

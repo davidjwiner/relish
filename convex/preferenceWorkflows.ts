@@ -15,6 +15,7 @@ import {
   internalAction,
   internalMutation,
   internalQuery,
+  mutation,
   type MutationCtx,
 } from './_generated/server';
 import type { Id } from './_generated/dataModel';
@@ -24,6 +25,7 @@ import {
   type ExtractionCandidate,
 } from './lib/preferenceExtraction';
 import { markTasteProfileStale } from './lib/tasteProfileState';
+import { currentUser } from './lib/preferenceAuth';
 
 const extractionWorkflow = new WorkflowManager(components.workflow, {
   workpoolOptions: { maxParallelism: 2 },
@@ -80,65 +82,83 @@ type CommitResult = {
   applied: number;
   discarded: number;
 };
+async function dispatchDueWork(
+  ctx: MutationCtx,
+  { force, userId }: { force?: boolean; userId?: Id<'users'> },
+): Promise<{ started: number; disabled: boolean; inProgress: boolean }> {
+  if (!force && process.env.PREFERENCE_EXTRACTION_ENABLED !== 'true')
+    return { started: 0, disabled: true, inProgress: false };
+  const now = Date.now();
+  const due = userId
+    ? await ctx.db
+        .query('conversationPreferenceState')
+        .withIndex('by_user', (q) => q.eq('userId', userId))
+        .collect()
+    : await ctx.db
+        .query('conversationPreferenceState')
+        .withIndex('by_next_review', (q) =>
+          q.gte('nextReviewAt', 0).lte('nextReviewAt', now),
+        )
+        .order('asc')
+        .take(30);
+  let inProgress = false;
+  let started = 0;
+  for (const state of due) {
+    if (!force && (!state.nextReviewAt || state.nextReviewAt > now)) continue;
+    if (state.workflowId) {
+      inProgress = true;
+      continue;
+    }
+    if (started >= 10 || state.processedThroughOrder >= state.latestUserOrder)
+      continue;
+    const thread = await ctx.runQuery(components.agent.threads.getThread, {
+      threadId: state.threadId,
+    });
+    if (!thread || thread.userId !== state.userId) {
+      await ctx.db.delete(state._id);
+      continue;
+    }
+    const workflowId = await extractionWorkflow.start(
+      ctx,
+      internal.preferenceWorkflows.runExtraction,
+      {
+        userId: state.userId,
+        threadId: state.threadId,
+        startCheckpoint: state.processedThroughOrder,
+        startedAt: now,
+      },
+      {
+        startAsync: true,
+        onComplete: internal.preferenceWorkflows.completeExtraction,
+        context: { userId: state.userId, threadId: state.threadId },
+      },
+    );
+    await ctx.db.patch(state._id, {
+      workflowId,
+      nextReviewAt: undefined,
+      lastErrorCode: undefined,
+    });
+    started++;
+  }
+  console.info('preference extraction dispatch', { started });
+  return { started, disabled: false, inProgress };
+}
+
 // Preference extraction never appends messages to an Agent thread.
 export const dispatchDue = internalMutation({
   args: { force: v.optional(v.boolean()) },
-  handler: async (
-    ctx,
-    { force },
-  ): Promise<{
-    started: number;
-    disabled: boolean;
-  }> => {
-    if (!force && process.env.PREFERENCE_EXTRACTION_ENABLED !== 'true')
-      return { started: 0, disabled: true };
-    const now = Date.now();
-    const due = await ctx.db
-      .query('conversationPreferenceState')
-      .withIndex('by_next_review', (q) =>
-        q.gte('nextReviewAt', 0).lte('nextReviewAt', now),
-      )
-      .order('asc')
-      .take(30);
-    let started = 0;
-    for (const state of due) {
-      if (
-        started >= 10 ||
-        state.workflowId ||
-        state.processedThroughOrder >= state.latestUserOrder
-      )
-        continue;
-      const thread = await ctx.runQuery(components.agent.threads.getThread, {
-        threadId: state.threadId,
-      });
-      if (!thread || thread.userId !== state.userId) {
-        await ctx.db.delete(state._id);
-        continue;
-      }
-      const workflowId = await extractionWorkflow.start(
-        ctx,
-        internal.preferenceWorkflows.runExtraction,
-        {
-          userId: state.userId,
-          threadId: state.threadId,
-          startCheckpoint: state.processedThroughOrder,
-          startedAt: now,
-        },
-        {
-          startAsync: true,
-          onComplete: internal.preferenceWorkflows.completeExtraction,
-          context: { userId: state.userId, threadId: state.threadId },
-        },
-      );
-      await ctx.db.patch(state._id, {
-        workflowId,
-        nextReviewAt: undefined,
-        lastErrorCode: undefined,
-      });
-      started++;
-    }
-    console.info('preference extraction dispatch', { started });
-    return { started, disabled: false };
+  handler: (ctx, { force }) => dispatchDueWork(ctx, { force }),
+});
+
+export const requestExtraction = mutation({
+  args: {},
+  returns: v.object({ started: v.number(), inProgress: v.boolean() }),
+  handler: async (ctx) => {
+    const { started, inProgress } = await dispatchDueWork(ctx, {
+      force: true,
+      userId: await currentUser(ctx),
+    });
+    return { started, inProgress };
   },
 });
 
