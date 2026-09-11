@@ -10,4 +10,11 @@ crons.interval(
   {},
 );
 
+crons.interval(
+  'dispatch taste profile reviews',
+  { minutes: 1 },
+  internal.tasteProfileWorkflows.dispatchDue,
+  {},
+);
+
 export default crons;

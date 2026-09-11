@@ -17,8 +17,13 @@ import type * as lib_preferenceAuth from "../lib/preferenceAuth.js";
 import type * as lib_preferenceExtraction from "../lib/preferenceExtraction.js";
 import type * as lib_preferenceTools from "../lib/preferenceTools.js";
 import type * as lib_preferenceTypes from "../lib/preferenceTypes.js";
+import type * as lib_tasteProfileState from "../lib/tasteProfileState.js";
+import type * as lib_tasteProfileTypes from "../lib/tasteProfileTypes.js";
+import type * as lib_tasteReviewAgent from "../lib/tasteReviewAgent.js";
 import type * as preferenceWorkflows from "../preferenceWorkflows.js";
 import type * as preferences from "../preferences.js";
+import type * as tasteProfileWorkflows from "../tasteProfileWorkflows.js";
+import type * as tasteProfiles from "../tasteProfiles.js";
 import type * as users from "../users.js";
 
 import type {
@@ -37,8 +42,13 @@ declare const fullApi: ApiFromModules<{
   "lib/preferenceExtraction": typeof lib_preferenceExtraction;
   "lib/preferenceTools": typeof lib_preferenceTools;
   "lib/preferenceTypes": typeof lib_preferenceTypes;
+  "lib/tasteProfileState": typeof lib_tasteProfileState;
+  "lib/tasteProfileTypes": typeof lib_tasteProfileTypes;
+  "lib/tasteReviewAgent": typeof lib_tasteReviewAgent;
   preferenceWorkflows: typeof preferenceWorkflows;
   preferences: typeof preferences;
+  tasteProfileWorkflows: typeof tasteProfileWorkflows;
+  tasteProfiles: typeof tasteProfiles;
   users: typeof users;
 }>;
 

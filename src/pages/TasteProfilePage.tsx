@@ -13,6 +13,7 @@ import {
   type TargetKindFilter,
 } from '../taste/ProfileFilters';
 import { PreferenceRow, type ProfilePreference } from '../taste/PreferenceRow';
+import { TasteOverview } from '../taste/TasteOverview';
 
 const reactions = new Set<ReactionFilter>(['like', 'dislike']);
 const targetKinds = new Set<TargetKindFilter>(['artist', 'track']);
@@ -135,6 +136,7 @@ export function TasteProfilePage() {
         </button>
       </header>
 
+      <TasteOverview />
       {refreshMessage && (
         <p
           role="status"
