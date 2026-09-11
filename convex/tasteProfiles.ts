@@ -8,7 +8,10 @@ import {
 } from './_generated/server';
 import type { Id } from './_generated/dataModel';
 import { currentUser } from './lib/preferenceAuth';
-import { TASTE_REVIEW_COOLDOWN_MS } from './lib/tasteProfileState';
+import {
+  TASTE_REVIEW_COOLDOWN_MS,
+  TASTE_REVIEW_PROMPT_VERSION,
+} from './lib/tasteProfileState';
 
 const reaction = v.union(v.literal('like'), v.literal('dislike'));
 const evidenceValidator = v.object({
@@ -120,7 +123,9 @@ export const requestRefresh = mutation({
     }
     if (profile.workflowId) return { scheduled: false };
     const cooldownUntil = (profile.generatedAt ?? 0) + TASTE_REVIEW_COOLDOWN_MS;
-    const isStale = profile.summaryVersion !== profile.preferencesVersion;
+    const isStale =
+      profile.summaryVersion !== profile.preferencesVersion ||
+      profile.promptVersion !== TASTE_REVIEW_PROMPT_VERSION;
     if (!isStale && profile.status !== 'failed' && cooldownUntil > now)
       return { scheduled: false, cooldownUntil };
     await ctx.db.patch(profile._id, {

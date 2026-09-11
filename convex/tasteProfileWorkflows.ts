@@ -17,6 +17,7 @@ import {
   type QueryCtx,
 } from './_generated/server';
 import { CHAT_MODEL } from './lib/musicAgent';
+import { TASTE_REVIEW_PROMPT_VERSION } from './lib/tasteProfileState';
 import {
   tasteReviewAgent,
   type TasteReviewOutput,
@@ -260,7 +261,7 @@ export const commitTasteReview = internalMutation({
         reviewedPreferenceCount: 0,
         coverage: 'complete',
         model: CHAT_MODEL,
-        promptVersion: 'taste-review-v1',
+        promptVersion: TASTE_REVIEW_PROMPT_VERSION,
         lastErrorCode: undefined,
       });
       return { status: 'empty', inputCount: 0 };
@@ -328,7 +329,7 @@ export const commitTasteReview = internalMutation({
       reviewedPreferenceCount: args.reviewedPreferenceIds.length,
       coverage: args.isPartial ? 'partial' : 'complete',
       model: CHAT_MODEL,
-      promptVersion: 'taste-review-v1',
+      promptVersion: TASTE_REVIEW_PROMPT_VERSION,
       lastErrorCode: undefined,
     });
     console.info('taste profile review committed', {
