@@ -12,16 +12,16 @@ vi.mock('ai', async (original) => ({
   ...(await original<typeof import('ai')>()),
   generateText: vi.fn(async (args: { prompt: string }) => {
     const input = JSON.parse(args.prompt) as {
-      preferences: { id: string; title: string }[];
+      preferences: { evidenceId: string; title: string }[];
     };
     return {
       output: {
         overview: 'An early picture emerges from the music you have saved.',
-        overviewEvidenceIds: [input.preferences[0].id],
+        overviewEvidenceIds: [input.preferences[0].evidenceId],
         drawnTo: [
           {
             text: `You return to ${input.preferences[0].title}.`,
-            evidenceIds: [input.preferences[0].id],
+            evidenceIds: [input.preferences[0].evidenceId],
           },
         ],
         avoids: [],
