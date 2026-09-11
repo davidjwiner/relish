@@ -23,8 +23,7 @@ export function PreferenceRow({
   removing: boolean;
   onRemove: (preference: ProfilePreference) => void;
 }) {
-  const reasonLabel =
-    preference.reaction === 'like' ? 'Why you like it' : 'Why you dislike it';
+  const reasonLabel = 'What you said';
   const date = new Intl.DateTimeFormat(undefined, {
     month: 'short',
     day: 'numeric',
