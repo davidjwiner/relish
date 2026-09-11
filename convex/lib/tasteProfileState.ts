@@ -3,7 +3,7 @@ import type { Id } from '../_generated/dataModel';
 
 export const TASTE_REVIEW_DELAY_MS = 60_000;
 export const TASTE_REVIEW_COOLDOWN_MS = 5 * 60_000;
-export const TASTE_REVIEW_PROMPT_VERSION = 'taste-review-v3';
+export const TASTE_REVIEW_PROMPT_VERSION = 'taste-review-v4';
 
 /**
  * Records a single user-level preference revision. Both preference writers use

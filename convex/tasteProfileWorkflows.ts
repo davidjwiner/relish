@@ -20,6 +20,7 @@ import { CHAT_MODEL } from './lib/musicAgent';
 import { TASTE_REVIEW_PROMPT_VERSION } from './lib/tasteProfileState';
 import {
   tasteReviewAgent,
+  tasteReviewOutputFor,
   type TasteReviewOutput,
 } from './lib/tasteReviewAgent';
 
@@ -215,9 +216,12 @@ export const generateTasteOverview = internalAction({
       preferenceIdsByEvidenceId.set(evidenceId, id);
       return { evidenceId, ...details };
     });
+    const evidenceIds = preferences.map(
+      (preference) => preference.evidenceId,
+    ) as [string, ...string[]];
     const result = await generateText({
       model: tasteReviewAgent.model,
-      output: Output.object({ schema: tasteReviewAgent.output }),
+      output: Output.object({ schema: tasteReviewOutputFor(evidenceIds) }),
       maxOutputTokens: 2048,
       maxRetries: 0,
       abortSignal: AbortSignal.timeout(90_000),
@@ -226,7 +230,14 @@ export const generateTasteOverview = internalAction({
       prompt: JSON.stringify({ preferences }),
     });
     const restorePreferenceIds = (ids: string[]) =>
-      ids.map((id) => preferenceIdsByEvidenceId.get(id) ?? id);
+      ids.map((id) => {
+        const preferenceId = preferenceIdsByEvidenceId.get(id);
+        if (!preferenceId)
+          throw new Error(
+            `Taste review returned unknown evidence alias: ${id}`,
+          );
+        return preferenceId;
+      });
     const restoreClaimIds = (claims: TasteReviewOutput['drawnTo']) =>
       claims.map((claim) => ({
         ...claim,
