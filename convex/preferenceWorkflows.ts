@@ -147,6 +147,11 @@ async function dispatchDueWork(
 // Preference extraction never appends messages to an Agent thread.
 export const dispatchDue = internalMutation({
   args: { force: v.optional(v.boolean()) },
+  returns: v.object({
+    started: v.number(),
+    disabled: v.boolean(),
+    inProgress: v.boolean(),
+  }),
   handler: (ctx, { force }) => dispatchDueWork(ctx, { force }),
 });
 
@@ -170,6 +175,15 @@ export const snapshotPage = internalQuery({
     startCheckpoint: v.number(),
     cursor: v.union(v.string(), v.null()),
   },
+  returns: v.union(
+    v.null(),
+    v.object({
+      latestUserOrder: v.number(),
+      messages: v.array(transcriptMessageValidator),
+      continueCursor: v.string(),
+      isDone: v.boolean(),
+    }),
+  ),
   handler: async (ctx, args): Promise<SnapshotPage | null> => {
     const state = await ctx.db
       .query('conversationPreferenceState')
@@ -225,6 +239,10 @@ export const extractPreferences = internalAction({
     messages: v.array(transcriptMessageValidator),
     newMessageIds: v.array(v.string()),
   },
+  returns: v.object({
+    candidates: v.array(candidateValidator),
+    tokenUsage: v.number(),
+  }),
   handler: async (_ctx, args): Promise<ExtractionResult> => {
     await getServiceToken('ai-gateway');
     const result = await generateText({
@@ -343,6 +361,11 @@ export const commitExtraction = internalMutation({
     tokenUsage: v.number(),
     startedAt: v.number(),
   },
+  returns: v.object({
+    status: v.union(v.literal('committed'), v.literal('obsolete')),
+    applied: v.number(),
+    discarded: v.number(),
+  }),
   handler: async (ctx, args): Promise<CommitResult> => {
     const state = await ctx.db
       .query('conversationPreferenceState')
@@ -590,6 +613,7 @@ export const completeExtraction = internalMutation({
     result: vResultValidator,
     context: v.object({ userId: v.id('users'), threadId: v.string() }),
   },
+  returns: v.null(),
   handler: async (ctx, args): Promise<void> => {
     const state = await ctx.db
       .query('conversationPreferenceState')
@@ -630,6 +654,7 @@ export const completeExtraction = internalMutation({
 
 export const cleanupCompletedExtraction = internalMutation({
   args: { workflowId: vWorkflowId },
+  returns: v.null(),
   handler: async (ctx, { workflowId }): Promise<void> => {
     const referenced = await ctx.db
       .query('conversationPreferenceState')
@@ -642,6 +667,7 @@ export const cleanupCompletedExtraction = internalMutation({
 
 export const restartFailedExtraction = internalMutation({
   args: { threadId: v.string() },
+  returns: v.object({ restarted: v.boolean() }),
   handler: async (ctx, { threadId }): Promise<{ restarted: boolean }> => {
     const state = await ctx.db
       .query('conversationPreferenceState')
@@ -677,6 +703,7 @@ export const seedBackfillState = internalMutation({
     latestUserOrder: v.number(),
     latestUserCreatedAt: v.number(),
   },
+  returns: v.boolean(),
   handler: async (ctx, args): Promise<boolean> => {
     const existing = await ctx.db
       .query('conversationPreferenceState')
@@ -714,6 +741,14 @@ export const backfillPage = internalAction({
     nextUserCursor: v.optional(v.string()),
     threadCursor: v.optional(v.string()),
   },
+  returns: v.object({
+    seeded: v.number(),
+    userId: v.optional(v.id('users')),
+    userCursor: v.optional(v.string()),
+    nextUserCursor: v.optional(v.string()),
+    threadCursor: v.optional(v.string()),
+    done: v.boolean(),
+  }),
   handler: async (
     ctx,
     args,

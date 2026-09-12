@@ -11,6 +11,7 @@ import {
 } from './_generated/server';
 import type { Doc } from './_generated/dataModel';
 import { currentUser } from './lib/preferenceAuth';
+import schema from './schema';
 import { reaction } from './lib/preferenceTypes';
 import { markTasteProfileStale } from './lib/tasteProfileState';
 
@@ -48,6 +49,14 @@ export const list = query({
     paginationOpts: paginationOptsValidator,
     targetKey: v.optional(v.string()),
   },
+  returns: paginationResultValidator(
+    v.object({
+      ...schema.tables.preferences.validator.fields,
+      _id: v.id('preferences'),
+      _creationTime: v.number(),
+      name: v.string(),
+    }),
+  ),
   handler: async (ctx, args) => {
     const userId = await currentUser(ctx);
     const opts = {

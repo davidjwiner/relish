@@ -7,9 +7,16 @@ import {
   listUIMessages,
   syncStreams,
   vStreamArgs,
+  vStreamMessagesReturnValue,
+  type UIMessage,
 } from '@convex-dev/agent';
-import { paginationOptsValidator, getServiceToken } from 'convex/server';
-import { ConvexError, v } from 'convex/values';
+import { vThreadDoc } from '@convex-dev/agent/validators';
+import {
+  paginationOptsValidator,
+  paginationResultValidator,
+  getServiceToken,
+} from 'convex/server';
+import { ConvexError, v, type VAny } from 'convex/values';
 import { api, components } from './_generated/api';
 import {
   mutation,
@@ -25,6 +32,28 @@ import {
   getStatus as getWorkflowStatus,
   type WorkflowId,
 } from '@convex-dev/workflow';
+
+// Agent's AI SDK parts and metadata are extensible; validate the message
+// envelope while preserving the SDK's part types for client autocomplete.
+const uiMessage = v.object({
+  id: v.string(),
+  role: v.union(v.literal('system'), v.literal('user'), v.literal('assistant')),
+  parts: v.array(v.any() as VAny<UIMessage['parts'][number]>),
+  metadata: v.optional(v.any() as VAny<UIMessage['metadata']>),
+  key: v.string(),
+  order: v.number(),
+  stepOrder: v.number(),
+  status: v.union(
+    v.literal('streaming'),
+    v.literal('pending'),
+    v.literal('success'),
+    v.literal('failed'),
+  ),
+  agentName: v.optional(v.string()),
+  userId: v.optional(v.string()),
+  text: v.string(),
+  _creationTime: v.number(),
+});
 
 async function currentUser(ctx: QueryCtx | MutationCtx) {
   const userId = await getAuthUserId(ctx);
@@ -62,6 +91,7 @@ async function requireThread(ctx: QueryCtx | MutationCtx, threadId: string) {
 
 export const listThreads = query({
   args: { paginationOpts: paginationOptsValidator },
+  returns: paginationResultValidator(vThreadDoc),
   handler: async (ctx, { paginationOpts }) =>
     ctx.runQuery(components.agent.threads.listThreadsByUserId, {
       userId: await currentUser(ctx),
@@ -70,6 +100,7 @@ export const listThreads = query({
 });
 export const getThread = query({
   args: { threadId: v.string() },
+  returns: v.union(v.null(), v.object({ title: v.string() })),
   handler: async (ctx, { threadId }) => {
     const thread = await ownedThread(ctx, threadId, await currentUser(ctx));
     return thread ? { title: thread.title ?? 'Conversation' } : null;
@@ -77,6 +108,7 @@ export const getThread = query({
 });
 export const deleteThread = mutation({
   args: { threadId: v.string() },
+  returns: v.null(),
   handler: async (ctx, { threadId }) => {
     await requireThread(ctx, threadId);
     const preferenceState = await ctx.db
@@ -121,6 +153,11 @@ export const listMessages = query({
     paginationOpts: paginationOptsValidator,
     streamArgs: vStreamArgs,
   },
+  returns: v.object({
+    ...paginationResultValidator(v.null()).fields,
+    page: v.array(uiMessage),
+    streams: vStreamMessagesReturnValue.fields.streams,
+  }),
   handler: async (ctx, args) => {
     // Active subscriptions can rerun after the conversation is deleted.
     if (!(await ownedThread(ctx, args.threadId, await currentUser(ctx))))
@@ -142,6 +179,7 @@ export const listMessages = query({
 // Save first so a generation failure never loses the user's message.
 export const send = mutation({
   args: { threadId: v.optional(v.string()), prompt: v.string() },
+  returns: v.object({ threadId: v.string(), promptMessageId: v.string() }),
   handler: async (ctx, { threadId, prompt }) => {
     const userId = await currentUser(ctx);
     prompt = prompt.trim();
@@ -186,6 +224,7 @@ export const send = mutation({
 // Called directly by the browser. Agent owns messages and stream state entirely.
 export const generate = action({
   args: { threadId: v.string(), promptMessageId: v.string() },
+  returns: v.null(),
   handler: async (ctx, args): Promise<void> => {
     if (!(await ctx.runQuery(api.chat.getThread, { threadId: args.threadId })))
       throw new ConvexError('CONVERSATION_UNAVAILABLE');
@@ -233,6 +272,7 @@ export const generate = action({
 });
 export const stop = mutation({
   args: { threadId: v.string() },
+  returns: v.null(),
   handler: async (ctx, { threadId }) => {
     await requireThread(ctx, threadId);
     const streams = await listStreams(ctx, components.agent, {
